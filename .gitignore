@@ -34,4 +34,5 @@ Thumbs.db
 
 # Build artifacts
 plan-ai
+mcp-server
 *.exe
