@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS research_jobs (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, topic TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', confidence REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_research_jobs_project ON research_jobs(project_id);
+CREATE TABLE IF NOT EXISTS research_recommendations (id TEXT PRIMARY KEY, research_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_research_recommendations_research ON research_recommendations(research_id);
+CREATE TABLE IF NOT EXISTS knowledge_links (id TEXT PRIMARY KEY, knowledge_id TEXT NOT NULL, link_type TEXT NOT NULL, target_id TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(knowledge_id, link_type, target_id));
+ALTER TABLE knowledge_objects ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE knowledge_objects ADD COLUMN title TEXT NOT NULL DEFAULT '';
+ALTER TABLE knowledge_objects ADD COLUMN research_ids TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE knowledge_objects ADD COLUMN related_decisions TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE knowledge_objects ADD COLUMN related_requirements TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE knowledge_objects ADD COLUMN related_constraints TEXT NOT NULL DEFAULT '[]';
+CREATE INDEX IF NOT EXISTS idx_knowledge_objects_project ON knowledge_objects(project_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_objects_title ON knowledge_objects(title);

@@ -1,0 +1,37 @@
+# Go
+bin/
+dist/
+build/
+coverage.out
+*.test
+*.prof
+
+# SQLite
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Logs and cache
+*.log
+logs/
+cache/
+.cache/
+
+# Plan-AI local data
+.plan-ai/
+.tmp/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+plan-ai
+*.exe

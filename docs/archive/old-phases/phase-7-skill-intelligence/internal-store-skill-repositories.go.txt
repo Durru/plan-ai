@@ -1,0 +1,155 @@
+package store
+
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/plan-ai/plan-ai/internal/skills"
+)
+
+type SkillRepository struct{ db *sql.DB }
+
+func NewSkillRepository(db *sql.DB) SkillRepository { return SkillRepository{db: db} }
+
+var _ skills.Repository = SkillRepository{}
+
+const skillColumns = `id, name, description, location, scope, version, fingerprint, category, status, last_scanned_at, created_at, updated_at`
+
+func scanSkill(row interface{ Scan(dest ...any) error }) (skills.Skill, error) {
+	var s skills.Skill
+	var scope, category, status string
+	var lastScanned, created, updated string
+	if err := row.Scan(&s.ID, &s.Name, &s.Description, &s.Location, &scope, &s.Version, &s.Fingerprint, &category, &status, &lastScanned, &created, &updated); err != nil {
+		return s, err
+	}
+	s.Scope = skills.Scope(scope)
+	s.Category = skills.Category(category)
+	s.Status = skills.Status(status)
+	s.LastScannedAt = parseTime(lastScanned)
+	s.CreatedAt = parseTime(created)
+	s.UpdatedAt = parseTime(updated)
+	return s, nil
+}
+
+func (r SkillRepository) CreateSkill(skill skills.Skill) error {
+	skill.ID = ensureID(skill.ID, "skill")
+	now, updated := ensureTimestamps(skill.CreatedAt, skill.UpdatedAt)
+	lastScanned := skill.LastScannedAt.UTC().Format(time.RFC3339)
+	if skill.LastScannedAt.IsZero() { lastScanned = now }
+	_, err := r.db.Exec(fmt.Sprintf(`INSERT INTO skills (%s)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, skillColumns),
+		skill.ID, skill.Name, skill.Description, skill.Location, skill.Scope, skill.Version, skill.Fingerprint, skill.Category, skill.Status, lastScanned, now, updated)
+	return err
+}
+
+func (r SkillRepository) GetSkill(id string) (skills.Skill, error) {
+	return scanSkill(r.db.QueryRow(fmt.Sprintf(`SELECT %s FROM skills WHERE id = ?`, skillColumns), id))
+}
+
+func (r SkillRepository) ListSkills() ([]skills.Skill, error) {
+	return r.querySkills(fmt.Sprintf(`SELECT %s FROM skills ORDER BY scope, category, name, id`, skillColumns))
+}
+
+func (r SkillRepository) UpdateSkill(skill skills.Skill) error {
+	updated := time.Now().UTC().Format(time.RFC3339)
+	lastScanned := skill.LastScannedAt.UTC().Format(time.RFC3339)
+	if skill.LastScannedAt.IsZero() { lastScanned = updated }
+	_, err := r.db.Exec(`UPDATE skills SET name = ?, description = ?, location = ?, scope = ?, version = ?, fingerprint = ?, category = ?, status = ?, last_scanned_at = ?, updated_at = ? WHERE id = ?`,
+		skill.Name, skill.Description, skill.Location, skill.Scope, skill.Version, skill.Fingerprint, skill.Category, skill.Status, lastScanned, updated, skill.ID)
+	return err
+}
+
+func (r SkillRepository) DeleteSkill(id string) error {
+	_, err := r.db.Exec(`UPDATE skills SET status = ?, updated_at = ? WHERE id = ?`, skills.StatusInactive, time.Now().UTC().Format(time.RFC3339), id)
+	return err
+}
+
+func (r SkillRepository) GetByFingerprint(fingerprint string) (skills.Skill, error) {
+	return scanSkill(r.db.QueryRow(fmt.Sprintf(`SELECT %s FROM skills WHERE fingerprint = ?`, skillColumns), fingerprint))
+}
+
+func (r SkillRepository) ListByCategory(category skills.Category) ([]skills.Skill, error) {
+	return r.querySkills(fmt.Sprintf(`SELECT %s FROM skills WHERE category = ? ORDER BY name, id`, skillColumns), string(category))
+}
+
+func (r SkillRepository) SearchSkills(query string) ([]skills.Skill, error) {
+	like := "%" + strings.ToLower(strings.TrimSpace(query)) + "%"
+	return r.querySkills(fmt.Sprintf(`SELECT %s FROM skills WHERE LOWER(name) LIKE ? OR LOWER(description) LIKE ? OR LOWER(location) LIKE ? OR LOWER(category) LIKE ? ORDER BY name, id`, skillColumns), like, like, like, like)
+}
+
+func (r SkillRepository) querySkills(query string, args ...any) ([]skills.Skill, error) {
+	rows, err := r.db.Query(query, args...)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var out []skills.Skill
+	for rows.Next() {
+		s, err := scanSkill(rows)
+		if err != nil { return nil, err }
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r SkillRepository) AddTag(skillID, tag string) error {
+	_, err := r.db.Exec(`INSERT INTO skill_tags (id, skill_id, tag) VALUES (?, ?, ?) ON CONFLICT(skill_id, tag) DO NOTHING`, domain.NewID("skill_tag"), skillID, tag)
+	return err
+}
+
+func (r SkillRepository) ListTags(skillID string) ([]skills.Tag, error) {
+	rows, err := r.db.Query(`SELECT id, skill_id, tag FROM skill_tags WHERE skill_id = ? ORDER BY tag`, skillID)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var out []skills.Tag
+	for rows.Next() {
+		var tag skills.Tag
+		if err := rows.Scan(&tag.ID, &tag.SkillID, &tag.Tag); err != nil { return nil, err }
+		out = append(out, tag)
+	}
+	return out, rows.Err()
+}
+
+func (r SkillRepository) CreateRecommendation(input skills.RecommendationInput) (skills.Recommendation, error) {
+	rec := skills.Recommendation{ID: domain.NewID("skill_rec"), SkillID: input.SkillID, RecommendedFor: strings.TrimSpace(input.RecommendedFor), Reason: strings.TrimSpace(input.Reason), CreatedAt: time.Now().UTC()}
+	_, err := r.db.Exec(`INSERT INTO skill_recommendations (id, skill_id, recommended_for, reason, created_at) VALUES (?, ?, ?, ?, ?)`, rec.ID, rec.SkillID, rec.RecommendedFor, rec.Reason, rec.CreatedAt.Format(time.RFC3339))
+	return rec, err
+}
+
+func (r SkillRepository) ListRecommendations() ([]skills.Recommendation, error) {
+	rows, err := r.db.Query(`SELECT id, skill_id, recommended_for, reason, created_at FROM skill_recommendations ORDER BY created_at, id`)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var out []skills.Recommendation
+	for rows.Next() {
+		var rec skills.Recommendation
+		var created string
+		if err := rows.Scan(&rec.ID, &rec.SkillID, &rec.RecommendedFor, &rec.Reason, &created); err != nil { return nil, err }
+		rec.CreatedAt = parseTime(created)
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (r SkillRepository) ClearRecommendations() error {
+	_, err := r.db.Exec(`DELETE FROM skill_recommendations`)
+	return err
+}
+
+func (r SkillRepository) Summary() (skills.Summary, error) {
+	rows, err := r.db.Query(`SELECT scope, category, COUNT(*), MAX(last_scanned_at) FROM skills GROUP BY scope, category`)
+	if err != nil { return skills.Summary{}, err }
+	defer rows.Close()
+	summary := skills.Summary{Categories: map[skills.Category]int{}}
+	for rows.Next() {
+		var scope, category, last string
+		var count int
+		if err := rows.Scan(&scope, &category, &count, &last); err != nil { return summary, err }
+		summary.Total += count
+		if skills.Scope(scope) == skills.ScopeProject { summary.Project += count } else { summary.Global += count }
+		summary.Categories[skills.Category(category)] += count
+		if parsed := parseTime(last); parsed.After(summary.LastScan) { summary.LastScan = parsed }
+	}
+	return summary, rows.Err()
+}

@@ -1,0 +1,161 @@
+package skills
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+type Scanner struct {
+	HomeRoot    string
+	ProjectRoot string
+	Now         func() time.Time
+}
+
+func NewScanner(homeRoot, projectRoot string) Scanner {
+	return Scanner{HomeRoot: homeRoot, ProjectRoot: projectRoot, Now: func() time.Time { return time.Now().UTC() }}
+}
+
+func (s Scanner) ScanGlobal() ([]ScannedSkill, error) {
+	return s.scanDirs([]scanDir{
+		{filepath.Join(s.HomeRoot, ".plan-ai", "skills"), ScopeGlobal},
+		{filepath.Join(s.HomeRoot, ".config", "opencode", "skills"), ScopeGlobal},
+		{filepath.Join(s.HomeRoot, ".claude", "skills"), ScopeGlobal},
+		{filepath.Join(s.HomeRoot, ".codex", "skills"), ScopeGlobal},
+	})
+}
+
+func (s Scanner) ScanProject() ([]ScannedSkill, error) {
+	return s.scanDirs([]scanDir{
+		{filepath.Join(s.ProjectRoot, ".plan-ai", "skills"), ScopeProject},
+		{filepath.Join(s.ProjectRoot, ".opencode", "skills"), ScopeProject},
+	})
+}
+
+type scanDir struct {
+	path  string
+	scope Scope
+}
+
+func (s Scanner) scanDirs(dirs []scanDir) ([]ScannedSkill, error) {
+	var out []ScannedSkill
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir.path); os.IsNotExist(err) {
+			continue
+		}
+		err := filepath.WalkDir(dir.path, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !supportedSkillFile(path) {
+				return nil
+			}
+			skill, tags, err := s.scanFile(path, dir.scope)
+			if err != nil {
+				return err
+			}
+			out = append(out, ScannedSkill{Skill: skill, Tags: tags})
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Skill.Location < out[j].Skill.Location })
+	return out, nil
+}
+
+func supportedSkillFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".yaml", ".yml", ".json":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s Scanner) scanFile(path string, scope Scope) (Skill, []string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Skill{}, nil, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return Skill{}, nil, err
+	}
+	fp, err := FingerprintFile(path)
+	if err != nil {
+		return Skill{}, nil, err
+	}
+	name, desc, version, status := parseSkillMetadata(path, data)
+	text := name + "\n" + desc + "\n" + string(data)
+	now := s.Now()
+	skill := Skill{
+		Name:          name,
+		Description:   desc,
+		Location:      path,
+		Scope:         scope,
+		Version:       version,
+		Fingerprint:   fp,
+		Category:      Classify(text),
+		Status:        status,
+		LastScannedAt: now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if skill.Description == "" {
+		skill.Description = info.ModTime().UTC().Format(time.RFC3339) + " skill file"
+	}
+	return skill, TagsFor(text), nil
+}
+
+func parseSkillMetadata(path string, data []byte) (name, desc, version string, status Status) {
+	status = StatusActive
+	name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if strings.EqualFold(filepath.Base(path), "SKILL.md") {
+		name = filepath.Base(filepath.Dir(path))
+	}
+	if strings.EqualFold(filepath.Ext(path), ".json") {
+		var m map[string]any
+		if json.Unmarshal(data, &m) == nil {
+			if v, ok := m["name"].(string); ok && strings.TrimSpace(v) != "" { name = strings.TrimSpace(v) }
+			if v, ok := m["description"].(string); ok { desc = strings.TrimSpace(v) }
+			if v, ok := m["version"].(string); ok { version = strings.TrimSpace(v) }
+			if v, ok := m["status"].(string); ok { status = NormalizeStatus(v) }
+			return
+		}
+	}
+	lines := strings.Split(string(data), "\n")
+	inFrontMatter := false
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if i == 0 && line == "---" { inFrontMatter = true; continue }
+		if inFrontMatter && line == "---" { inFrontMatter = false; continue }
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(lower, "name:") || strings.HasPrefix(lower, "title:") {
+			name = cleanMetaValue(line[strings.Index(line, ":")+1:])
+		}
+		if strings.HasPrefix(lower, "description:") || strings.HasPrefix(lower, "summary:") {
+			desc = cleanMetaValue(line[strings.Index(line, ":")+1:])
+		}
+		if strings.HasPrefix(lower, "version:") { version = cleanMetaValue(line[strings.Index(line, ":")+1:]) }
+		if strings.HasPrefix(lower, "status:") { status = NormalizeStatus(cleanMetaValue(line[strings.Index(line, ":")+1:])) }
+		if desc == "" && strings.HasPrefix(line, "#") {
+			name = strings.TrimSpace(strings.TrimLeft(line, "#"))
+		}
+		if desc == "" && line != "" && !strings.HasPrefix(line, "#") && !strings.Contains(line, ":") && line != "---" {
+			desc = line
+		}
+	}
+	return
+}
+
+func cleanMetaValue(value string) string {
+	return strings.Trim(strings.TrimSpace(value), `"'`)
+}

@@ -1,0 +1,96 @@
+package skills
+
+import "time"
+
+type Scope string
+
+const (
+	ScopeGlobal  Scope = "global"
+	ScopeProject Scope = "project"
+)
+
+type Status string
+
+const (
+	StatusActive   Status = "active"
+	StatusInactive Status = "inactive"
+	StatusUnknown  Status = "unknown"
+)
+
+type Category string
+
+const (
+	CategoryFrontend     Category = "frontend"
+	CategoryBackend      Category = "backend"
+	CategoryDatabase     Category = "database"
+	CategoryTesting      Category = "testing"
+	CategorySecurity     Category = "security"
+	CategoryDeployment   Category = "deployment"
+	CategoryArchitecture Category = "architecture"
+	CategoryMCP          Category = "mcp"
+	CategoryAgents       Category = "agents"
+	CategoryAI           Category = "ai"
+	CategoryIntegration  Category = "integration"
+	CategoryDevops       Category = "devops"
+	CategoryGeneral      Category = "general"
+)
+
+type Skill struct {
+	ID            string
+	Name          string
+	Description   string
+	Location      string
+	Scope         Scope
+	Version       string
+	Fingerprint   string
+	Category      Category
+	Status        Status
+	LastScannedAt time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type Tag struct {
+	ID      string
+	SkillID string
+	Tag     string
+}
+
+type Recommendation struct {
+	ID             string
+	SkillID        string
+	RecommendedFor string
+	Reason         string
+	CreatedAt      time.Time
+}
+
+type Summary struct {
+	Total      int
+	Global     int
+	Project    int
+	Categories map[Category]int
+	LastScan   time.Time
+}
+
+type ScannedSkill struct {
+	Skill Skill
+	Tags  []string
+}
+
+type RegisterInput struct {
+	ID          string
+	Name        string
+	Description string
+	Location    string
+	Scope       Scope
+	Version     string
+	Category    Category
+	Status      Status
+	Tags        []string
+}
+
+type RecommendationInput struct {
+	SkillID        string
+	RecommendedFor string
+	Reason         string
+}

@@ -1,0 +1,76 @@
+package skills
+
+import "strings"
+
+func NormalizeScope(value string) Scope {
+	switch Scope(strings.ToLower(strings.TrimSpace(value))) {
+	case ScopeProject:
+		return ScopeProject
+	default:
+		return ScopeGlobal
+	}
+}
+
+func NormalizeStatus(value string) Status {
+	switch Status(strings.ToLower(strings.TrimSpace(value))) {
+	case StatusActive:
+		return StatusActive
+	case StatusInactive:
+		return StatusInactive
+	default:
+		return StatusUnknown
+	}
+}
+
+func NormalizeCategory(value, text string) Category {
+	switch Category(strings.ToLower(strings.TrimSpace(value))) {
+	case CategoryFrontend, CategoryBackend, CategoryDatabase, CategoryTesting, CategorySecurity,
+		CategoryDeployment, CategoryArchitecture, CategoryMCP, CategoryAgents, CategoryAI,
+		CategoryIntegration, CategoryDevops, CategoryGeneral:
+		return Category(strings.ToLower(strings.TrimSpace(value)))
+	}
+	return Classify(text)
+}
+
+func Classify(text string) Category {
+	t := strings.ToLower(text)
+	rules := []struct {
+		cat      Category
+		keywords []string
+	}{
+		{CategoryFrontend, []string{"next", "nextjs", "react", "vue", "svelte", "angular", "tailwind", "css", "frontend", "ui", "component"}},
+		{CategoryDatabase, []string{"postgres", "postgresql", "mysql", "sqlite", "database", "migration", "sql", "schema", "supabase"}},
+		{CategorySecurity, []string{"security", "jwt", "oauth", "auth", "csrf", "xss", "owasp", "threat"}},
+		{CategoryTesting, []string{"test", "testing", "pytest", "playwright", "go test", "tdd", "e2e"}},
+		{CategoryDeployment, []string{"deploy", "deployment", "vercel", "docker", "release", "ci/cd"}},
+		{CategoryBackend, []string{"backend", "api", "server", "django", "fastapi", "spring", "go", "node"}},
+		{CategoryArchitecture, []string{"architecture", "hexagonal", "clean architecture", "design", "adr", "domain"}},
+		{CategoryMCP, []string{"mcp", "model context protocol"}},
+		{CategoryAgents, []string{"agent", "subagent", "opencode", "claude", "codex"}},
+		{CategoryAI, []string{"ai", "llm", "prompt", "rag", "anthropic", "openai"}},
+		{CategoryIntegration, []string{"integration", "webhook", "stripe", "resend", "clerk"}},
+		{CategoryDevops, []string{"devops", "nginx", "terraform", "kubernetes", "observability", "monitoring"}},
+	}
+	for _, rule := range rules {
+		for _, kw := range rule.keywords {
+			if strings.Contains(t, kw) {
+				return rule.cat
+			}
+		}
+	}
+	return CategoryGeneral
+}
+
+func TagsFor(text string) []string {
+	t := strings.ToLower(text)
+	keywords := []string{"next", "react", "vue", "tailwind", "postgres", "mysql", "sqlite", "security", "jwt", "oauth", "testing", "playwright", "docker", "vercel", "mcp", "agent", "llm", "go"}
+	var tags []string
+	seen := map[string]bool{}
+	for _, kw := range keywords {
+		if strings.Contains(t, kw) && !seen[kw] {
+			seen[kw] = true
+			tags = append(tags, kw)
+		}
+	}
+	return tags
+}

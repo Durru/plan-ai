@@ -1,0 +1,68 @@
+package skills
+
+import (
+	"strings"
+
+	"github.com/plan-ai/plan-ai/internal/scanner"
+)
+
+func Recommend(catalog []Skill, scan *scanner.Result) []RecommendationInput {
+	if scan == nil {
+		return nil
+	}
+	stack := scanText(scan)
+	rules := []struct {
+		match  []string
+		want   []string
+		forUse string
+		reason string
+	}{
+		{[]string{"next", "next.js", "react"}, []string{"next", "nextjs", "react", "tailwind", "testing", "playwright"}, "Next.js frontend work", "Detected Next.js/React stack; frontend, styling, and testing skills are relevant."},
+		{[]string{"tailwind"}, []string{"tailwind", "frontend"}, "Tailwind styling", "Detected Tailwind dependency or config."},
+		{[]string{"postgres", "postgresql"}, []string{"postgres", "database", "migration", "backup", "database-design"}, "PostgreSQL persistence", "Detected PostgreSQL; schema, migration, and backup guidance are relevant."},
+		{[]string{"sqlite"}, []string{"sqlite", "database", "migration", "database-design"}, "SQLite persistence", "Detected SQLite; local persistence and migration guidance are relevant."},
+		{[]string{"go"}, []string{"go", "testing", "tdd"}, "Go implementation", "Detected Go project files or dependencies; Go testing skills are relevant."},
+		{[]string{"docker"}, []string{"docker", "deployment", "devops"}, "Deployment workflow", "Detected Docker assets; deployment and DevOps skills are relevant."},
+	}
+	seen := map[string]bool{}
+	var out []RecommendationInput
+	for _, rule := range rules {
+		if !containsAny(stack, rule.match) {
+			continue
+		}
+		for _, skill := range catalog {
+			if skillMatches(skill, rule.want) {
+				key := skill.ID + ":" + rule.forUse
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				out = append(out, RecommendationInput{SkillID: skill.ID, RecommendedFor: rule.forUse, Reason: rule.reason})
+			}
+		}
+	}
+	return out
+}
+
+func scanText(scan *scanner.Result) string {
+	var parts []string
+	parts = append(parts, scan.Summary)
+	for _, lang := range scan.Languages { parts = append(parts, lang.Language) }
+	for _, fw := range scan.Frameworks { parts = append(parts, fw.Name, fw.Evidence) }
+	for _, pm := range scan.PackageManagers { parts = append(parts, pm.Name, pm.Evidence) }
+	for _, dep := range scan.Dependencies { parts = append(parts, dep.Name, dep.Source) }
+	for _, file := range scan.Files { parts = append(parts, file.Path) }
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
+func containsAny(text string, values []string) bool {
+	for _, value := range values {
+		if strings.Contains(text, strings.ToLower(value)) { return true }
+	}
+	return false
+}
+
+func skillMatches(skill Skill, values []string) bool {
+	text := strings.ToLower(skill.Name + " " + skill.Description + " " + string(skill.Category))
+	return containsAny(text, values)
+}

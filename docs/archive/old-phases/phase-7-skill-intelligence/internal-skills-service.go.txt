@@ -1,0 +1,203 @@
+package skills
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/plan-ai/plan-ai/internal/scanner"
+)
+
+type Repository interface {
+	CreateSkill(Skill) error
+	GetSkill(string) (Skill, error)
+	ListSkills() ([]Skill, error)
+	UpdateSkill(Skill) error
+	DeleteSkill(string) error
+	GetByFingerprint(string) (Skill, error)
+	ListByCategory(Category) ([]Skill, error)
+	SearchSkills(string) ([]Skill, error)
+	AddTag(skillID, tag string) error
+	ListTags(skillID string) ([]Tag, error)
+	CreateRecommendation(RecommendationInput) (Recommendation, error)
+	ListRecommendations() ([]Recommendation, error)
+	ClearRecommendations() error
+	Summary() (Summary, error)
+}
+
+type Service struct {
+	repo    Repository
+	scanner Scanner
+	now     func() time.Time
+}
+
+func NewService(repo Repository, scanner Scanner) *Service {
+	return &Service{repo: repo, scanner: scanner, now: func() time.Time { return time.Now().UTC() }}
+}
+
+func (s *Service) ScanGlobalSkills() ([]Skill, error) {
+	scanned, err := s.scanner.ScanGlobal()
+	if err != nil {
+		return nil, err
+	}
+	return s.persistScanned(scanned)
+}
+
+func (s *Service) ScanProjectSkills() ([]Skill, error) {
+	scanned, err := s.scanner.ScanProject()
+	if err != nil {
+		return nil, err
+	}
+	return s.persistScanned(scanned)
+}
+
+func (s *Service) RegisterSkill(input RegisterInput) (Skill, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return Skill{}, fmt.Errorf("skill name is required")
+	}
+	location := strings.TrimSpace(input.Location)
+	if location == "" {
+		return Skill{}, fmt.Errorf("skill location is required")
+	}
+	now := s.now()
+	skill := Skill{
+		ID:            strings.TrimSpace(input.ID),
+		Name:          name,
+		Description:   strings.TrimSpace(input.Description),
+		Location:      location,
+		Scope:         NormalizeScope(string(input.Scope)),
+		Version:       strings.TrimSpace(input.Version),
+		Category:      NormalizeCategory(string(input.Category), name+" "+input.Description),
+		Status:        NormalizeStatus(string(input.Status)),
+		LastScannedAt: now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if skill.ID == "" {
+		skill.ID = domain.NewID("skill")
+	}
+	if skill.Fingerprint == "" {
+		skill.Fingerprint = "manual:" + skill.ID
+	}
+	if err := s.repo.CreateSkill(skill); err != nil {
+		return skill, err
+	}
+	for _, tag := range normalizeTags(input.Tags) {
+		if err := s.repo.AddTag(skill.ID, tag); err != nil {
+			return skill, err
+		}
+	}
+	return skill, nil
+}
+
+func (s *Service) UpdateSkill(id string, input RegisterInput) (Skill, error) {
+	existing, err := s.repo.GetSkill(strings.TrimSpace(id))
+	if err != nil {
+		return existing, err
+	}
+	if strings.TrimSpace(input.Name) != "" {
+		existing.Name = strings.TrimSpace(input.Name)
+	}
+	if strings.TrimSpace(input.Description) != "" {
+		existing.Description = strings.TrimSpace(input.Description)
+	}
+	if strings.TrimSpace(input.Version) != "" {
+		existing.Version = strings.TrimSpace(input.Version)
+	}
+	if input.Category != "" {
+		existing.Category = NormalizeCategory(string(input.Category), existing.Name+" "+existing.Description)
+	}
+	if input.Status != "" {
+		existing.Status = NormalizeStatus(string(input.Status))
+	}
+	existing.UpdatedAt = s.now()
+	return existing, s.repo.UpdateSkill(existing)
+}
+
+func (s *Service) SearchSkills(query string) ([]Skill, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, fmt.Errorf("search text is required")
+	}
+	return s.repo.SearchSkills(query)
+}
+
+func (s *Service) ListSkills() ([]Skill, error) { return s.repo.ListSkills() }
+
+func (s *Service) GetSkill(id string) (Skill, error) { return s.repo.GetSkill(strings.TrimSpace(id)) }
+
+func (s *Service) GetSummary() (Summary, error) { return s.repo.Summary() }
+
+func (s *Service) RecommendSkills(scan *scanner.Result) ([]Recommendation, error) {
+	if scan == nil {
+		return nil, fmt.Errorf("project scan result is required")
+	}
+	if err := s.repo.ClearRecommendations(); err != nil {
+		return nil, err
+	}
+	skills, err := s.repo.ListSkills()
+	if err != nil {
+		return nil, err
+	}
+	reqs := Recommend(skills, scan)
+	var out []Recommendation
+	for _, req := range reqs {
+		rec, err := s.repo.CreateRecommendation(req)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, nil
+}
+
+func (s *Service) persistScanned(scanned []ScannedSkill) ([]Skill, error) {
+	var out []Skill
+	for _, item := range scanned {
+		skill := item.Skill
+		existing, err := s.repo.GetByFingerprint(skill.Fingerprint)
+		if err == nil {
+			existing.LastScannedAt = s.now()
+			existing.UpdatedAt = existing.UpdatedAt
+			if err := s.repo.UpdateSkill(existing); err != nil {
+				return nil, err
+			}
+			out = append(out, existing)
+			continue
+		}
+		if skill.ID == "" {
+			skill.ID = domain.NewID("skill")
+		}
+		if skill.CreatedAt.IsZero() {
+			skill.CreatedAt = s.now()
+		}
+		if skill.UpdatedAt.IsZero() {
+			skill.UpdatedAt = skill.CreatedAt
+		}
+		if err := s.repo.CreateSkill(skill); err != nil {
+			return nil, err
+		}
+		for _, tag := range normalizeTags(item.Tags) {
+			if err := s.repo.AddTag(skill.ID, tag); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, skill)
+	}
+	return out, nil
+}
+
+func normalizeTags(values []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
