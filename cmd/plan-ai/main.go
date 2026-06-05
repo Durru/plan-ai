@@ -103,6 +103,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newConfidenceCommand())
 	cmd.AddCommand(newAlignmentCommand())
 	cmd.AddCommand(newSetupCommand())
+	cmd.AddCommand(newUpdateVpsCommand())
 
 	return cmd
 }
@@ -4933,6 +4934,7 @@ func newSetupCommand() *cobra.Command {
 	}
 	cmd.AddCommand(newSetupOpenCodeCommand())
 	cmd.AddCommand(newSetupOpenCodeWorkflowsCommand())
+	cmd.AddCommand(newSetupUpdateVpsCommand())
 	return cmd
 }
 
