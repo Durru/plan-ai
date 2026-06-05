@@ -102,8 +102,10 @@ func TestProjectMigrationsAreIdempotent(t *testing.T) {
 		"plan_evolution_blueprints_v3", "implementation_packages_v2",
 		"change_impact_reports_v2", "continuous_regenerations_v2",
 		"subagent_tasks_v2", "opencode_workflows_v2",
+		"intent_v3_product_intents", "intent_v3_discovery_results",
+		"discovery_v3_questions", "discovery_v3_answers",
 	})
-	assertMigrationCount(t, db, 39)
+	assertMigrationCount(t, db, 40)
 	assertColumns(t, db, "schema_migrations", []string{"id", "name", "applied_at"})
 	assertColumns(t, db, "plans", []string{"id", "type", "title", "summary", "status", "version", "parent_plan_id", "created_at", "updated_at"})
 	assertColumns(t, db, "phases", []string{"id", "plan_id", "title", "summary", "status", "position", "created_at", "updated_at"})

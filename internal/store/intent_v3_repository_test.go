@@ -28,13 +28,13 @@ func TestCreateAndApproveProductIntent(t *testing.T) {
 	svc := intentv3.NewService(intentRepo, discRepo)
 
 	pi, err := svc.CreateProductIntent(intentv3.CreateProductIntentInput{
-		ProjectID:       "project",
-		Description:     "Build a CRM SaaS",
-		ExpectedOutcome: "Increase sales team productivity",
+		ProjectID:         "project",
+		Description:       "Build a CRM SaaS",
+		ExpectedOutcome:   "Increase sales team productivity",
 		DesiredExperience: "Fast and intuitive interface",
-		DesiredResult:    "30% more leads managed",
-		UserExpectations: []string{"Mobile access", "Real-time sync"},
-		NonExpectations:  []string{"Not a full ERP"},
+		DesiredResult:     "30% more leads managed",
+		UserExpectations:  []string{"Mobile access", "Real-time sync"},
+		NonExpectations:   []string{"Not a full ERP"},
 		SuccessDefinition: "Users adopt within 2 weeks",
 		FailureDefinition: "Performance below 100ms response",
 	})
@@ -248,8 +248,8 @@ func TestDiscoveryResultLinkedToProductIntent(t *testing.T) {
 	dr, _ := svc.DiscoverIntent("project", "I want a SaaS analytics dashboard with real-time monitoring")
 	// Then create intent from discovery
 	pi, err := svc.CreateProductIntent(intentv3.CreateProductIntentInput{
-		ProjectID:        "project",
-		Description:      "Analytics dashboard",
+		ProjectID:         "project",
+		Description:       "Analytics dashboard",
 		DiscoveryResultID: dr.ID,
 	})
 	if err != nil {

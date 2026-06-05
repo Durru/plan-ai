@@ -2,165 +2,128 @@
 
 **Local-first continuous implementation planning for AI-assisted projects.**
 
-Plan-AI prepares implementation plans. It does not implement code.
+Plan-AI prepares implementation plans. It does not implement code. It stores approved context, decisions, research, knowledge, plans, tasks, snapshots, and exported documents in local SQLite stores so the project has a durable source of truth before AI agents start coding.
 
-Plan-AI owns the durable truth of a project — approved context, decisions, research, knowledge, plans, tasks, snapshots, and exported documents — in local SQLite stores. LLMs may help analyze or summarize, but Plan-AI's store is the source of truth.
+## Why Plan-AI exists
 
-## Quick start
+AI coding fails when the plan lives only in chat. Plan-AI gives the project its own planning memory:
+
+- Product intent before implementation.
+- Progressive discovery before task generation.
+- Ambiguity and confidence checks before coding.
+- Alignment reports that connect tasks back to the approved intent.
+- Local-first persistence, no required hosted service.
+
+## Install
 
 ```bash
-# Install global persistence
-go run ./cmd/plan-ai install
-
-# Initialize for the current project
-go run ./cmd/plan-ai init
-
-# View status
-go run ./cmd/plan-ai status
-
-# Scan the project
-go run ./cmd/plan-ai scan
-
-# Ingest input and create vision
-go run ./cmd/plan-ai ingest --type prompt --content "Build a planning assistant."
-go run ./cmd/plan-ai vision draft
-
-# Store approved context
-go run ./cmd/plan-ai approved add --type requirement "The app must save planning drafts"
-
-# Add research and knowledge
-go run ./cmd/plan-ai research add --topic "Research topic" --summary "..."
-go run ./cmd/plan-ai knowledge add --topic "Architecture pattern" --content "..."
-
-# Generate plan artifacts
-go run ./cmd/plan-ai plan
-
-# Check integration health
-go run ./cmd/plan-ai doctor
+git clone https://github.com/Durru/plan-ai.git
+cd plan-ai
+bash scripts/install.sh
 ```
 
-## Architecture
+Then make sure the install prefix is on PATH if needed:
 
-Plan-AI is organized in layers:
-
-| Layer | Package | Purpose |
-|-------|---------|---------|
-| CLI | `cmd/plan-ai/` | Cobra command tree (20+ commands) |
-| MCP Server | `cmd/mcp-server/` | stdio-based MCP interface (30 tools) |
-| Core | `internal/core/` | App metadata, version |
-| Config | `internal/config/` | Global/project config paths |
-| Domain | `internal/domain/` | Canonical entity model |
-| Store | `internal/store/` | SQLite persistence, migrations, repositories |
-| Scanner | `internal/scanner/` | Deterministic project scanner |
-| Ingestion | `internal/ingestion/` | Input classification and ingestion |
-| Vision | `internal/vision/` | Vision draft creation and approval |
-| Context | `internal/context/` | Approved context management |
-| Research | `internal/research/` | Research entries, findings, sources, conclusions |
-| Knowledge | `internal/knowledge/` | Reusable technical knowledge base |
-| Planning | `internal/planning/` | Master plans, specific plans, implementation docs |
-| Change | `internal/change/` | Change detection, impact analysis, snapshots |
-| Workflows | `internal/workflows/` | Workflow execution registry |
-| Agent | `internal/agent/` | Intent detection, routing, delegation |
-| Continuous | `internal/continuous/` | Event detection, plan update proposals |
-| MCP | `internal/mcp/` | Tool definitions and handlers |
-| OpenCode | `internal/opencode/` | Optional OpenCode integration artifacts |
-| Model Strategy | `internal/modelstrategy/` | LLM provider registry and budget tracking |
-| Capabilities | `internal/capabilities/` | Capability registry |
-| Orchestrator | `internal/orchestrator/` | Job queue and orchestration |
-| Discovery | `internal/vision/` | Vision discovery sessions |
-| Delivery | `internal/context/` | Context delivery (L0-L4) |
-| Scanner | `internal/scanner/` | Stack and dependency detection |
-| Validation | `internal/validation/` | Validation resources |
-| Integrations | `internal/integrations/` | Integration surface |
-| Skills | `internal/skills/` | Skills/resources |
-
-## CLI
-
-Full reference: [docs/cli-reference.md](docs/cli-reference.md)
-
-Key commands:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
-plan-ai install        Install global persistence
-plan-ai init           Initialize project store
-plan-ai status         Show persistence and domain status
+
+Verify:
+
+```bash
+plan-ai doctor
+plan-ai init
+plan-ai status
+```
+
+More details: [docs/install.md](docs/install.md).
+
+## Quickstart
+
+```bash
+plan-ai ingest --type prompt --content "Build a planning assistant for product teams. It must use SQLite."
+plan-ai vision draft
+plan-ai approved add --type requirement "Plans must be stored locally."
+plan-ai approved add --type decision "Use SQLite as the source of truth."
+plan-ai plan master
+plan-ai context
+```
+
+V3 Product Intent flow:
+
+```bash
+plan-ai intent discover "Quiero crear un CRM para talleres mecánicos"
+
+plan-ai intent create \
+  --description "CRM for mechanic workshops" \
+  --expected-outcome "Workshops can track customers, vehicles, jobs, and follow-ups" \
+  --desired-experience "Simple, fast, Spanish-first workflow" \
+  --desired-result "A clear implementation plan before coding" \
+  --success-definition "A workshop owner can manage jobs without spreadsheets" \
+  --failure-definition "The tool becomes a generic CRM with no workshop-specific workflow"
+
+plan-ai intent list
+plan-ai discovery init --intent <pintent_id>
+plan-ai ambiguity analyze --intent <pintent_id>
+plan-ai confidence evaluate --intent <pintent_id>
+plan-ai alignment framework --intent <pintent_id>
+```
+
+Full guide: [docs/quickstart.md](docs/quickstart.md).
+
+## Core commands
+
+```text
+plan-ai install        Install or migrate global persistence
+plan-ai init           Initialize project persistence
+plan-ai status         Show store and project status
+plan-ai doctor         Check stores, migrations, and integrations
 plan-ai scan           Deterministic project scan
-plan-ai ingest         Classify and store input
-plan-ai vision         Create/approve vision drafts
-plan-ai approved       Manage approved context
-plan-ai research       Research entries with findings/sources/conclusions
-plan-ai knowledge      Reusable knowledge base
+plan-ai ingest         Store user input for planning
+plan-ai vision         Create and approve vision artifacts
+plan-ai approved       Manage approved project context
+plan-ai research       Store research and findings
+plan-ai knowledge      Store reusable project knowledge
 plan-ai plan           Generate planning artifacts
-plan-ai context        Executive context overview
-plan-ai capabilities   List registered capabilities
-plan-ai doctor         Check store paths, migrations, OpenCode health
-plan-ai agent          Agent system (status, process, list)
-plan-ai continuous     Continuous planning (status, events, proposals)
-plan-ai next           Get next pending task
-plan-ai setup opencode Generate OpenCode integration artifacts
-plan-ai validate       Run V2 validation suites
-plan-ai dev            Development inspection helpers
+plan-ai intent         Detect V2 intent and manage V3 Product Intent
+plan-ai discovery      Run progressive discovery for a Product Intent
+plan-ai ambiguity      Analyze missing information and assumptions
+plan-ai confidence     Score how well Plan-AI understands intent
+plan-ai alignment      Review implementation alignment to intent
+plan-ai setup opencode Generate safe OpenCode integration artifacts
+plan-ai validate       Run deterministic validation suites
 ```
 
-## MCP
-
-Plan-AI exposes a stdio MCP server at `cmd/mcp-server/` with 30 tools covering:
-- Project initialization and status
-- Master/specific plan creation and approval
-- Research, knowledge, and context management
-- Agent processing and continuous planning
-- Change detection, snapshots, and export
-
-Full reference: [docs/mcp-reference.md](docs/mcp-reference.md)
-
-## Sandbox safety
-
-**Never test against real user paths.** Use sandbox environment variables:
-
-```bash
-HOME="$PWD/.tmp/home" \
-PLAN_AI_HOME="$PWD/.tmp/home" \
-PLAN_AI_PROJECT_ROOT="$PWD/.tmp/project" \
-OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" \
-go run ./cmd/plan-ai status
-```
-
-Full sandbox validation:
-```bash
-bash scripts/test-sandbox.sh
-```
-
-Sandbox markers verified:
-- `REAL_GLOBAL_ABSENT` — no real `~/.plan-ai` exists
-- `REAL_PROJECT_ABSENT` — no real `.plan-ai` in project root
-- `REAL_OPENCODE_ABSENT` — no real `~/.config/opencode` exists
-- `SANDBOX_CLEANED` — sandbox cleaned after test
+Full reference: [docs/cli-reference.md](docs/cli-reference.md).
 
 ## Storage model
 
-Plan-AI uses two SQLite databases per machine:
+Plan-AI uses SQLite:
 
-- **Global store** (`~/.plan-ai/global.db`): known projects
-- **Project store** (`<project>/.plan-ai/project.db`): all domain data
+- Global store: `~/.plan-ai/global.db`
+- Project store: `<project>/.plan-ai/project.db`
 
-Both are created and migrated via `plan-ai install` / `plan-ai init`.
+Runtime data is intentionally ignored by git. Do not commit `.plan-ai/`, SQLite databases, logs, `.env` files, tokens, or generated binaries.
 
 ## OpenCode integration
 
-Optional, sandbox-scoped. Generate integration artifacts:
+Safe sandbox mode:
 
 ```bash
-plan-ai setup opencode
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai setup opencode
 ```
 
-Artifacts (all under `$OPENCODE_CONFIG_DIR`):
-- `opencode.json` — minimal OpenCode config
-- `mcp-registry.json` — MCP tool registry
-- `agents/plan-ai.json` — agent descriptor
-- `profiles.json` — integration profiles
-- `prompts.json` — prompt templates
-- `<project>/.plan-ai/opencode-sync.json` — sync marker
+Real OpenCode config writes require explicit opt-in:
 
-## Development
+```bash
+plan-ai setup opencode --allow-real-opencode
+```
+
+Guide: [docs/opencode-integration.md](docs/opencode-integration.md).
+
+## Validation
+
+Development gate:
 
 ```bash
 gofmt -w cmd internal
@@ -168,18 +131,48 @@ go test ./...
 go vet ./...
 go build ./...
 bash scripts/test-sandbox.sh
+bash scripts/test-vps-clean.sh
+bash scripts/release-check.sh
 ```
 
-## External docs
+Manual scenario: [docs/manual-validation.md](docs/manual-validation.md).  
+Clean VPS guide: [docs/vps-validation.md](docs/vps-validation.md).
 
-- [Architecture](docs/architecture.md)
+## Architecture
+
+| Layer | Package | Purpose |
+|-------|---------|---------|
+| CLI | `cmd/plan-ai/` | Cobra command tree |
+| MCP Server | `cmd/mcp-server/` | stdio MCP interface |
+| Core | `internal/core/` | App metadata |
+| Config | `internal/config/` | Global/project config paths |
+| Store | `internal/store/` | SQLite persistence, migrations, repositories |
+| Planning | `internal/planning/` | Master plans, specific plans, implementation docs |
+| Intent V3 | `internal/intentv3/` | Product Intent and deterministic discovery |
+| Discovery V3 | `internal/discoveryv3/` | Progressive discovery questions |
+| Ambiguity V3 | `internal/ambiguityv3/` | Missing information and assumption analysis |
+| Confidence V3 | `internal/confidencev3/` | Intent confidence scoring |
+| Alignment V3 | `internal/alignmentv3/` | Intent-to-implementation alignment reports |
+| OpenCode | `internal/opencode/` | Optional OpenCode integration artifacts |
+| MCP | `internal/mcp/` | Tool definitions and handlers |
+
+## Documentation
+
+- [Installation](docs/install.md)
+- [Quickstart](docs/quickstart.md)
 - [CLI reference](docs/cli-reference.md)
+- [Manual validation](docs/manual-validation.md)
+- [VPS validation](docs/vps-validation.md)
+- [OpenCode integration](docs/opencode-integration.md)
+- [Troubleshooting](docs/troubleshooting.md)
 - [MCP reference](docs/mcp-reference.md)
-- [OpenCode integration guide](docs/opencode-integration-guide.md)
-- [Installation guide](docs/installation.md)
+- [Architecture](docs/architecture.md)
 - [Project structure](docs/project-structure.md)
-- [Release notes](RELEASE_NOTES.md)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

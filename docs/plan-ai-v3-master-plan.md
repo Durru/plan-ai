@@ -90,115 +90,143 @@ Make intent the first-class, measurable, living truth source that every downstre
 
 ---
 
-#### Phase 51 — Intent Capture & Formalization
+#### Phase 51 — Product Intent Engine
 
-**Goal:** Transform V2's basic intent detection into structured, formalized intent profiles that support lifecycle management, measurement, and traceability.
+**Goal:** Create Product Intent as the new primary entity of the system.
 
-**Extends:** `internal/agent/`, Phase 34 Intent Engine.
+**Extends:** Phase 34 Intent Engine, Phase 36 Approval Workflow, Phase 47 Project Memory.
 
 **New concepts:**
-- `IntentProfile` — structured document with dimensions, priorities, scope boundaries, success criteria
-- `IntentDimension` — a single axis of intent (e.g., UX simplicity, data privacy, mobile-first, admin power)
-- `IntentSignal` — raw evidence that contributed to the profile (user utterance, document, reference)
-- `IntentMetadata` — source, confidence, timestamp, version
+- `ProductIntent` — approved source of truth for what the product should become.
+- `ExpectedOutcome` — what the user expects the product to achieve.
+- `DesiredExperience` — how the product should feel to use.
+- `DesiredResult` — the concrete result the user wants.
+- `UserExpectations` — expectations to preserve.
+- `NonExpectations` — explicit things the product must avoid becoming.
+- `SuccessDefinition` — how success is recognized.
+- `FailureDefinition` — how misalignment/failure is recognized.
 
-**Output:** Formal `IntentProfile` with structured dimensions, each with weight/priority and success criteria.
+**Output:** Project → Product Intent → Planning → Implementation.
+
+**Rule:** No V3 planning path proceeds without approved Product Intent. Existing MVP/V2 commands remain backward-compatible; the guard applies to V3 alignment flows.
 
 **CLI:** Extends `plan-ai intent` with:
-- `plan-ai intent formalize` — upgrade detected intent to structured profile
-- `plan-ai intent profile` — show full formalized intent profile
-- `plan-ai intent dimension add|list|remove` — manage intent dimensions
+- `plan-ai intent create` — create a V3 Product Intent.
+- `plan-ai intent list` — list V3 Product Intents.
+- `plan-ai intent show <pintent_id>` — show Product Intent details.
+- `plan-ai intent submit <pintent_id>` — submit Product Intent for approval.
+- `plan-ai intent approve <pintent_id>` — approve Product Intent.
 
-**MCP:** `plan_ai.formalize_intent`, `plan_ai.get_intent_profile`, `plan_ai.add_intent_dimension`
+**MCP:** Product Intent tools create, list, get, submit, approve, and reject Product Intent records.
 
-**Acceptance:** Given detected intent "quiero un SaaS CRM", formalization produces a structured profile with dimensions (multi-user, subscription billing, reporting, permissions), each with weight, evidence, and success criteria — without re-asking the user for information already captured.
+**Acceptance:** A project can create, inspect, submit, and approve a Product Intent containing expected outcome, desired experience/result, expectations, non-expectations, success definition, and failure definition. V3 downstream flows can reference the approved `pintent_*` record.
 
 ---
 
-#### Phase 52 — Intent Lifecycle Management
+#### Phase 52 — Intent Discovery Engine
 
-**Goal:** Give intent a proper lifecycle — versions, states, approvals, deprecation — so it can evolve with the project without losing history.
+**Goal:** Extract the user's real intent from raw ideas and project descriptions.
 
-**Extends:** Phase 36 Approval Workflow, Phase 47 Project Memory.
+**Extends:** Phase 51 Product Intent Engine and V2 intent detection.
 
-**Intent states:**
-- `discovered` — raw detection, not yet formalized
-- `draft` — profile exists but unapproved
-- `active` — approved and actively tracked
-- `superseded` — replaced by a newer version
-- `archived` — no longer relevant, but kept for audit
+**Implements:**
+- Intent Extraction
+- Intent Classification
+- Intent Analysis
+- Intent Questions
+- Intent Gaps
+- Intent Evolution hooks for later phases
 
-**Output:** Versioned intent history with approvals, rationale, and deprecation chain.
+**Functions:**
+- Detect intent
+- Detect objectives
+- Detect restrictions
+- Detect preferences
+- Detect references
+- Detect expectations
+
+**Output:** Deterministic `DiscoveryResult` records that can seed Product Intent and Progressive Discovery without relying on network/model calls.
 
 **CLI:**
-- `plan-ai intent approve` (extends existing)
-- `plan-ai intent version` — list intent version history
-- `plan-ai intent deprecate` — mark intent version as superseded
+- `plan-ai intent discover "<idea>"` — produce deterministic intent discovery output.
 
-**MCP:** `plan_ai.approve_intent`, `plan_ai.list_intent_versions`
+**MCP:** Intent discovery tools expose deterministic discovery results for agent workflows.
 
-**Acceptance:** Intent can transition through all states. Deprecation preserves the full profile for audit and alignment history calculations.
+**Acceptance:** Given a raw idea, Plan-AI extracts detected intent, classification, objectives, restrictions, preferences, references, expectations, gaps, and next questions, and persists the result for later alignment phases.
 
 ---
 
-#### Phase 53 — Alignment Metrics Engine
+#### Phase 53 — Progressive Discovery System
 
-**Goal:** Define and compute a quantitative **alignment level** between any artifact (plan, task, implementation, validation) and the originating intent.
+**Goal:** Implement a **deterministic, progressive discovery system** that asks targeted questions level by level (project → master_plan → specific_plan → phase → task), reducing ambiguity without relying on LLM calls.
 
-**Extends:** Phase 36 Approval Workflow, `internal/validation/`.
+**Extends:** Phase 51 Product Intent Engine, Phase 52 Discovery Engine, `internal/intentv3/`.
+
+**New package:** `internal/discoveryv3/`
+
+**Design:**
+- `DiscoveryLevel` — ordered enum: `project`, `master_plan`, `specific_plan`, `phase`, `task`
+- `Question` — deterministic question with `IntentID`, `Level`, `Question` text, `Reason`, `Required` flag, `RelatedFields`, `Position`
+- `Answer` — stores user response linked to a `QuestionID` and `IntentID`
+- `Service.Initialize(intentID)` — creates the static question set for an intent (idempotent)
+- `Service.GetNextQuestions(intentID, level)` — returns unanswered questions at the specified level (auto-detects first incomplete level if omitted)
+- `Service.Answer(intentID, questionID, answer)` — persists the answer
+- `Service.Status(intentID)` — returns `SessionStatus` with progression state, counts, and suggestion
+
+**Question sets (deterministic, per level):**
+
+| Level | # Qs | Examples |
+|---|---|---|
+| Project | 4 | Goal, target user, business outcome, constraints |
+| Master Plan | 5 | Milestones, architecture, risks, timeline, dependencies |
+| Specific Plan | 4 | Feature scope, requirements, technologies, acceptance criteria |
+| Phase | 3 | Tasks, duration, dependencies |
+| Task | 3 | Description, affected files, testing strategy |
+
+**CLI:**
+- `plan-ai discovery init --intent <id>` — initialize discovery questions
+- `plan-ai discovery next --intent <id> [--level]` — show next questions
+- `plan-ai discovery answer --question <id> --intent <id> --answer "..."` — answer
+- `plan-ai discovery v3-status --intent <id>` — show session status
+
+**MCP:** `plan_ai.discovery_init`, `plan_ai.discovery_next`, `plan_ai.discovery_answer`, `plan_ai.discovery_status`
+
+**Acceptance:** Given a project with an approved V3 product intent, running `plan-ai discovery init` creates 19 deterministic questions across 5 levels. Answering all project-level questions advances the session to master_plan level. Status shows accurate answered count and progression hint.
+
+---
+
+#### Phase 54 — Ambiguity Detection Engine
+
+**Goal:** Detect insufficient information before planning or execution advances.
+
+**Extends:** Phase 51 Product Intent Engine, Phase 52 Intent Discovery, Phase 53 Progressive Discovery.
 
 **New concepts:**
-- `AlignmentScore` — 0.0–1.0 score computed per artifact against intent
-- `AlignmentDimensionScore` — per-dimension breakdown of the score
-- `AlignmentGap` — specific dimension where coverage is missing or weak
-- `AlignmentThreshold` — minimum acceptable score per artifact type
+- `AmbiguityReport` — deterministic report of what is known, unknown, assumed, conflicting, and needed.
+- `AmbiguityScore` — 0–100 score where higher means more ambiguous.
+- `MissingInformation` — required intent fields or decision inputs that are absent.
+- `Assumption` — implicit assumption Plan-AI would otherwise make silently.
+- `Conflict` — contradictory terms or goals detected in the available intent/context.
+- `UnknownArea` — unanswered progressive discovery questions or unfilled project areas.
 
-**Core metric formula (first approximation):**
-```
-AlignmentScore = weighted_mean(dimension_coverage × dimension_priority)
-```
-
-Where `dimension_coverage` = how well the artifact addresses that intent dimension (0.0–1.0).
+**Functions:**
+- Detect missing information.
+- Detect assumptions.
+- Detect conflicts.
+- Detect unknown areas.
+- Report what Plan-AI knows, does not know, and needs to know.
 
 **CLI:**
-- `plan-ai alignment score` — compute alignment score for current state
-- `plan-ai alignment score --artifact <type> --id <id>` — score a specific artifact
-- `plan-ai alignment overview` — summary of all alignment scores
+- `plan-ai ambiguity analyze --input "..."` — analyze raw text.
+- `plan-ai ambiguity analyze --intent <pintent_id>` — analyze Product Intent plus progressive discovery answers.
 
-**MCP:** `plan_ai.compute_alignment_score`, `plan_ai.get_alignment_overview`
+**MCP:** Future MCP exposure can wrap the same deterministic ambiguity service.
 
-**Acceptance:** Given a project with intent profile containing 3 dimensions (weights 0.5, 0.3, 0.2), running alignment score returns a 0.0–1.0 value with per-dimension breakdown that updates when artifacts change.
+**Acceptance:** Given incomplete Product Intent or vague raw input, Plan-AI reports an ambiguity score, missing information, assumptions, conflicts, unknown areas, and needs-to-know items without relying on network/model calls.
 
 ---
 
-#### Phase 54 — Intent Drift Detection
-
-**Goal:** Proactively detect when plans, tasks, decisions, or output drift away from approved intent dimensions.
-
-**Extends:** Phase 43 Change Impact V2, Phase 44 Continuous Planning V2, `internal/continuous/`.
-
-**New concepts:**
-- `DriftEvent` — detected drift with affected dimensions, magnitude, trend
-- `DriftMagnitude` — quantitative measure of how far from intent (0.0 = no drift, 1.0 = complete misalignment)
-- `DriftTrend` — direction of drift over time (stable, increasing, decreasing)
-
-**Drift sources:**
-- Change requests that reduce alignment coverage
-- New decisions that contradict intent dimensions
-- Plan modifications that drop intent-aligned tasks
-- Scope creep not covered by any intent dimension
-
-**CLI:**
-- `plan-ai alignment drift` — show current drift status
-- `plan-ai alignment drift --history` — show drift over time
-
-**MCP:** `plan_ai.detect_drift`, `plan_ai.get_drift_history`
-
-**Acceptance:** When a plan modification drops a task tagged with a critical intent dimension, a DriftEvent is generated with magnitude > 0 and trend = "increasing". Drift events integrate into continuous planning proposals.
-
----
-
-#### Phase 55 — Intent Reconciliation
+#### Phase 55 — Intent Confidence Engine
 
 **Goal:** Handle multiple, overlapping, or conflicting intents — reconcile them into a coherent alignment baseline.
 
@@ -225,7 +253,7 @@ Where `dimension_coverage` = how well the artifact addresses that intent dimensi
 
 ---
 
-#### Phase 56 — Intent-Based Decision Engine
+#### Phase 56 — Approved Intent Registry
 
 **Goal:** Every architectural, technical, and design decision must be explicitly linked to at least one intent dimension — with an alignment justification.
 
@@ -251,7 +279,7 @@ Trace every artifact back to intent, and ensure consistency across the entire ch
 
 ---
 
-#### Phase 57 — Bidirectional Traceability
+#### Phase 57 — Intent Knowledge Graph
 
 **Goal:** Every artifact (plan, task, decision, research, validation) is traceable upstream to intent AND downstream to implementation output.
 
@@ -280,7 +308,7 @@ Trace every artifact back to intent, and ensure consistency across the entire ch
 
 ---
 
-#### Phase 58 — Consistency Engine
+#### Phase 58 — Vision Consistency Engine
 
 **Goal:** Ensure plans, decisions, and scope remain internally consistent and externally consistent with approved intent.
 
@@ -308,7 +336,7 @@ Trace every artifact back to intent, and ensure consistency across the entire ch
 
 ---
 
-#### Phase 59 — Provenance Chain
+#### Phase 59 — Outcome Validation Engine
 
 **Goal:** Every project fact stores its full provenance — where it came from, what intent it serves, who approved it, and what it replaced.
 
@@ -336,11 +364,11 @@ Trace every artifact back to intent, and ensure consistency across the entire ch
 
 ---
 
-#### Phase 60 — Gap Analyzer
+#### Phase 60 — UX Alignment Engine
 
 **Goal:** Detect intent dimensions that have no or insufficient coverage in current plans, tasks, decisions, or validations.
 
-**Extends:** Phase 53 Alignment Metrics, Phase 57 Traceability.
+**Extends:** Phase 53 Progressive Discovery, Phase 57 Traceability.
 
 **New concepts:**
 - `CoverageGap` — intent dimension with below-threshold coverage
@@ -358,11 +386,11 @@ Trace every artifact back to intent, and ensure consistency across the entire ch
 
 ---
 
-#### Phase 61 — Coverage Reports
+#### Phase 61 — Feature Intent Mapping
 
 **Goal:** Generate structured, exportable alignment coverage reports for stakeholders, agents, and audit.
 
-**Extends:** Phase 53–60, `internal/validation/`.
+**Extends:** Phase 53 Progressive Discovery, Phase 60, `internal/validation/`.
 
 **Report types:**
 - **Executive Summary:** alignment score, drift status, top gaps, recommendations
@@ -386,7 +414,7 @@ Make the planning engine alignment-aware — every plan and task explicitly serv
 
 ---
 
-#### Phase 62 — Intent-Aligned Task Generation
+#### Phase 62 — Plan Alignment Engine
 
 **Goal:** Generate tasks that explicitly reference which intent dimension they serve, with an estimated alignment contribution.
 
@@ -412,11 +440,11 @@ Make the planning engine alignment-aware — every plan and task explicitly serv
 
 ---
 
-#### Phase 63 — Implementation Progress Tracking
+#### Phase 63 — Task Alignment Engine
 
 **Goal:** Track alignment score changes as implementation progresses — measure whether the project is converging toward or diverging from intent.
 
-**Extends:** Phase 53 Alignment Metrics, Phase 62 Aligned Tasks.
+**Extends:** Phase 53 Progressive Discovery, Phase 62 Aligned Tasks.
 
 **New concepts:**
 - `AlignmentSnapshot` — point-in-time alignment score across all dimensions
@@ -434,7 +462,7 @@ Make the planning engine alignment-aware — every plan and task explicitly serv
 
 ---
 
-#### Phase 64 — Adaptive Plan Regeneration
+#### Phase 64 — Continuous Alignment Engine
 
 **Goal:** When alignment drift is detected, regenerate only the affected plan sections to restore alignment — without touching aligned sections.
 
@@ -466,11 +494,11 @@ Connect product identity and external references back to intent — ensuring the
 
 ---
 
-#### Phase 65 — Product Identity Model
+#### Phase 65 — Reference Product Engine
 
 **Goal:** Define a formal product identity derived from intent dimensions — capturing what the product IS and IS NOT based on approved intent.
 
-**Extends:** Phase 35 Vision Engine, Phase 51 Intent Formalization.
+**Extends:** Phase 35 Vision Engine, Phase 51 Product Intent Engine.
 
 **New concepts:**
 - `ProductIdentity` — structured definition: positioning statement, scope boundaries, personality traits
@@ -489,7 +517,7 @@ Connect product identity and external references back to intent — ensuring the
 
 ---
 
-#### Phase 66 — Reference-Intent Consistency
+#### Phase 66 — Product DNA Engine
 
 **Goal:** Every external reference (URL, document, screenshot, example repo) must be checked against product identity and intent. References that contradict intent are flagged.
 
@@ -510,11 +538,11 @@ Connect product identity and external references back to intent — ensuring the
 
 ---
 
-#### Phase 67 — Intent-Based Validation
+#### Phase 67 — Intent Impact Analysis
 
 **Goal:** Validate implementation output against original intent — not just against requirements or tests.
 
-**Extends:** Phase 49 Validation, Phase 53 Alignment Metrics.
+**Extends:** Phase 49 Validation, Phase 53 Progressive Discovery.
 
 **New concepts:**
 - `IntentValidationCheck` — check that maps implementation behavior to intent fulfillment
@@ -531,11 +559,11 @@ Connect product identity and external references back to intent — ensuring the
 
 ---
 
-#### Phase 68 — Product-Intent Synchronization
+#### Phase 68 — Alignment Context Engine
 
 **Goal:** Keep product identity synchronized with evolving intent — when intent changes, product identity updates automatically and flags affected plans/decisions.
 
-**Extends:** Phase 52 Intent Lifecycle, Phase 64 Adaptive Regeneration, Phase 65 Product Identity.
+**Extends:** Phase 52 Intent Discovery, Phase 64 Adaptive Regeneration, Phase 65 Product Identity.
 
 **New concepts:**
 - `IdentityChangeEvent` — triggered when intent evolution affects product identity
@@ -559,11 +587,11 @@ Systematic review and formal release of V3.
 
 ---
 
-#### Phase 69 — Alignment Review Framework
+#### Phase 69 — Product Review Engine
 
 **Goal:** Provide a structured, repeatable alignment review process that can be run at any point — producing actionable alignment improvement plans.
 
-**Extends:** Phase 53–68, Phase 49 Validation, `internal/validation/`.
+**Extends:** Phase 53 Progressive Discovery, Phase 68, Phase 49 Validation, `internal/validation/`.
 
 **Review dimensions:**
 1. **Intent completeness** — are all user intents captured and formalized?
@@ -588,7 +616,7 @@ Systematic review and formal release of V3.
 
 ---
 
-#### Phase 70 — Plan-AI V3 Release
+#### Phase 70 — Intent-To-Implementation Framework
 
 **Goal:** Release V3 with complete documentation, validation, and audit.
 
@@ -631,41 +659,43 @@ Systematic review and formal release of V3.
 ## 4. Dependency Graph
 
 ```text
-51 Intent Formalization
+51 Product Intent
   ↓
-52 Intent Lifecycle
+52 Intent Discovery
   ↓
-53 Alignment Metrics
-  ↓                    ↓
-54 Drift Detection    56 Intent-Based Decisions
-  ↓                    ↓
-55 Intent Reconciliation
+53 Progressive Discovery
   ↓
-57 Bidirectional Traceability
+54 Ambiguity Detection
   ↓
-58 Consistency Engine
+55 Intent Confidence
   ↓
-59 Provenance Chain
+56 Approved Intent Registry
   ↓
-60 Gap Analyzer
+57 Intent Knowledge Graph
   ↓
-61 Coverage Reports
+58 Vision Consistency
   ↓
-62 Aligned Task Generation
+59 Outcome Validation
   ↓
-63 Progress Tracking → 64 Adaptive Plan Regeneration
+60 UX Alignment
   ↓
-65 Product Identity
+61 Feature Intent Mapping
   ↓
-66 Reference-Intent Consistency
+62 Plan Alignment
   ↓
-67 Intent-Based Validation
+63 Task Alignment → 64 Continuous Alignment
   ↓
-68 Product-Intent Synchronization
+65 Reference Product Engine
   ↓
-69 Alignment Review Framework
+66 Product DNA
   ↓
-70 V3 Release
+67 Intent Impact Analysis
+  ↓
+68 Alignment Context
+  ↓
+69 Product Review
+  ↓
+70 Intent-To-Implementation Framework
 ```
 
 **Approval gates apply after phases:** 51, 52, 55, 56, 57, 62, 64, 65, 68, 69.
@@ -678,12 +708,12 @@ Systematic review and formal release of V3.
 
 | Phase | Area | Effort Estimate |
 |-------|------|----------------|
-| 51 | Intent Capture & Formalization | Medium — new structs, CLI extension, migration 0040 |
-| 52 | Intent Lifecycle Management | Medium — status machine, version tracking, migration 0041 |
-| 53 | Alignment Metrics Engine | High — core metric design, scoring algorithms, migration 0042 |
-| 54 | Intent Drift Detection | Medium — drift computation, continuous integration, migration 0043 |
-| 55 | Intent Reconciliation | Medium — conflict detection, resolution strategies, migration 0044 |
-| 56 | Intent-Based Decision Engine | Medium — decision linking, CLI, migration 0045 |
+| 51 | Product Intent Engine | Medium — ProductIntent entity, approval lifecycle, CLI/MCP extension, migration 0040 |
+| 52 | Intent Discovery Engine | Medium — deterministic extraction/classification/gaps/questions, stored in migration 0040 |
+| 53 | Progressive Discovery System | High — deterministic questions, progressive levels, migration 0041 |
+| 54 | Ambiguity Detection Engine | Medium — deterministic ambiguity report, missing info, assumptions, conflicts, unknown areas; no migration required |
+| 55 | Intent Confidence Engine | Medium — deterministic confidence report; no migration required |
+| 56 | Approved Intent Registry | Medium — derived registry from approved Product Intent; no migration required |
 
 **Outcome:** Intent is first-class, measurable, and drives all downstream decisions. Alignment score exists as a live metric.
 
@@ -691,11 +721,11 @@ Systematic review and formal release of V3.
 
 | Phase | Area | Effort Estimate |
 |-------|------|----------------|
-| 57 | Bidirectional Traceability | High — trace graph, trace links storage, CLI, migration 0046 |
-| 58 | Consistency Engine | Medium — rules engine, violation detection, migration 0047 |
-| 59 | Provenance Chain | Medium — provenance records, chain construction, migration 0048 |
-| 60 | Gap Analyzer | Medium — gap computation, remediation suggestions, migration 0049 |
-| 61 | Coverage Reports | Medium — report generation, export formats, migration 0050 |
+| 57 | Intent Knowledge Graph | High — deterministic trace links; no migration required |
+| 58 | Vision Consistency Engine | Medium — consistency report; no migration required |
+| 59 | Outcome Validation Engine | Medium — outcome gap validation; no migration required |
+| 60 | UX Alignment Engine | Medium — UX goals/rules/consistency; no migration required |
+| 61 | Feature Intent Mapping | Medium — feature purpose mapping; no migration required |
 
 **Outcome:** Every artifact is traceable to intent. Consistency is enforced. Gaps are visible.
 
@@ -703,9 +733,9 @@ Systematic review and formal release of V3.
 
 | Phase | Area | Effort Estimate |
 |-------|------|----------------|
-| 62 | Intent-Aligned Task Generation | Medium — alignment tags, task generation rules, migration 0051 |
-| 63 | Implementation Progress Tracking | Medium — alignment snapshots, trends, milestones, migration 0052 |
-| 64 | Adaptive Plan Regeneration | High — targeted regeneration, boundaries, preservation rules, migration 0053 |
+| 62 | Plan Alignment Engine | Medium — plan relevance analysis; no migration required |
+| 63 | Task Alignment Engine | Medium — task relevance analysis; no migration required |
+| 64 | Continuous Alignment Engine | High — drift monitoring report; no migration required |
 
 **Outcome:** Plans and tasks are alignment-aware. Drift triggers targeted regeneration.
 
@@ -713,10 +743,10 @@ Systematic review and formal release of V3.
 
 | Phase | Area | Effort Estimate |
 |-------|------|----------------|
-| 65 | Product Identity Model | Medium — identity derivation, boundaries, CLI, migration 0054 |
-| 66 | Reference-Intent Consistency | Small — alignment checks, flagging, migration 0055 |
-| 67 | Intent-Based Validation | Medium — validation checks, intent tests, CLI, migration 0056 |
-| 68 | Product-Intent Synchronization | Medium — identity change events, sync impact, migration 0057 |
+| 65 | Reference Product Engine | Medium — built-in reference products; no migration required |
+| 66 | Product DNA Engine | Small — DNA derived from Product Intent; no migration required |
+| 67 | Intent Impact Analysis | Medium — technical/functional/UX/business/vision impact; no migration required |
+| 68 | Alignment Context Engine | Medium — intent-oriented implementation context; no migration required |
 
 **Outcome:** Product identity is explicitly derived from and synchronized with intent.
 
@@ -724,8 +754,8 @@ Systematic review and formal release of V3.
 
 | Phase | Area | Effort Estimate |
 |-------|------|----------------|
-| 69 | Alignment Review Framework | Medium — 8-dimension review, report generation, CLI |
-| 70 | V3 Release | Medium — docs, validation, feature matrix, release notes |
+| 69 | Product Review Engine | Medium — product/intent/vision/outcome/alignment review |
+| 70 | Intent-To-Implementation Framework | Medium — unified framework readiness and stage report |
 
 **Outcome:** V3 is validated, documented, and released.
 
@@ -739,7 +769,7 @@ Systematic review and formal release of V3.
 |-----------|-------|---------|
 | 0040 | `intent_profiles` | Formalized intent profiles with dimensions |
 | 0040 | `intent_dimensions` | Individual intent dimensions with weights |
-| 0041 | `intent_versions` | Versioned intent lifecycle |
+| 0041 | `discovery_v3_questions`, `discovery_v3_answers` | Progressive discovery questions and answers |
 | 0042 | `alignment_scores` | Computed alignment scores snapshots |
 | 0043 | `drift_events` | Detected drift records |
 | 0044 | `intent_conflicts` | Detected/reconciled intent conflicts |
@@ -838,26 +868,26 @@ Plus phase-specific criteria:
 
 | Phase | Specific Acceptance |
 |-------|---------------------|
-| 51 | Structured intent profile with dimensions, weights, and evidence (no re-ask) |
-| 52 | Intent lifecycle: discovered → draft → active → superseded → archived |
-| 53 | AlignmentScore computed per artifact, per dimension, with formula documented |
-| 54 | DriftEvent generated when plan drops intent-aligned task ( > threshold) |
-| 55 | IntentConflict detected + ResolutionStrategy stored |
-| 56 | Every decision has intent_dimension_id + alignment_rationale |
-| 57 | TraceGraph shows complete intent→implementation paths; TraceCoverage reported |
-| 58 | ConsistencyViolation generated for decision contradicting intent |
-| 59 | ProvenanceChain available for every entity; queryable by source |
-| 60 | CoverageGap list sorted by severity; remediation suggestions available |
-| 61 | exportable CoverageReport in markdown + JSON formats |
-| 62 | Every generated task has AlignmentTag; unattached tasks flagged |
-| 63 | AlignmentSnapshot + Trend available; milestones settable and trackable |
-| 64 | TargetedRegenerationRequest affects only drifting sections; aligned sections frozen |
-| 65 | ProductIdentity derived from intent; IdentityBoundaries explicit |
-| 66 | ReferenceAlignmentCheck warns on contradiction; ReferenceConflictFlag actionable |
-| 67 | IntentValidationReport per dimension; IntentTestSuggestion generated |
-| 68 | IdentityChangeEvent on intent change; SyncImpact report with MigrationPath |
-| 69 | AlignmentReviewReport with 8 dimension scores, health, top 5 risks, remediation |
-| 70 | All V3 CLI/MCP/tests pass; docs complete; zero regressions; feature matrix updated |
+| 51 | Product Intent captures expected outcome, desired experience/result, expectations, non-expectations, success definition, and failure definition |
+| 52 | Intent Discovery extracts intent, objectives, restrictions, preferences, references, expectations, gaps, and questions deterministically |
+| 53 | Progressive discovery creates 19 deterministic questions across project, master_plan, specific_plan, phase, and task levels; answered questions are not repeated; next questions advance one level at a time |
+| 54 | Ambiguity report includes score, missing information, assumptions, conflicts, unknown areas, and needs-to-know items |
+| 55 | Intent Confidence report includes intent, vision, UX, business, requirements, constraints, and overall confidence scores |
+| 56 | Approved Intent registry exposes approved expectations, preferences, UX, outcomes, and references |
+| 57 | Intent Knowledge Graph links intent to outcome, experience, success criteria, and downstream alignment artifacts |
+| 58 | Vision Consistency report flags conflicts and drift against Product Intent |
+| 59 | Outcome Validation report compares expected and current outcome with gap analysis |
+| 60 | UX Alignment report captures UX goals, rules, references, and consistency score |
+| 61 | Feature Intent Mapping links each feature to intent, outcome, vision, and success criteria |
+| 62 | Plan Alignment report validates plan relevance against Product Intent |
+| 63 | Task Alignment report flags tasks without clear purpose against Product Intent |
+| 64 | Continuous Alignment report monitors intent, vision, outcome, planning, and execution drift |
+| 65 | Reference Product Engine exposes Linear, Notion, Stripe, GitHub, Slack, and Monday reference products |
+| 66 | Product DNA report derives product/design/business/technical DNA from Product Intent |
+| 67 | Intent Impact Analysis reports technical, functional, UX, business, vision, and intent impact |
+| 68 | Alignment Context tells OpenCode what to do, why it exists, desired outcome, and what to avoid |
+| 69 | Product Review report covers project, intent, vision, outcome, and alignment review scores |
+| 70 | Intent-To-Implementation Framework reports stages from Intent through Continuous Alignment and readiness |
 
 ---
 
@@ -892,7 +922,7 @@ Plus phase-specific criteria:
 
 After this document is approved, create an implementation plan for **Stage A — Intent Foundation** (Phases 51–56).
 
-**Recommended first implementation slice:** Phase 51 (Intent Capture & Formalization) + Phase 52 (Intent Lifecycle Management).
+**Recommended first implementation slice:** Phase 51 (Product Intent Engine) + Phase 52 (Intent Discovery Engine).
 
 **Rationale:** Every subsequent V3 phase depends on having formalized intent with a proper lifecycle. Without Phase 51/52, there is no alignment to measure, no drift to detect, and no traceability to build. These two phases form the foundational layer that the entire V3 architecture sits on.
 

@@ -1,35 +1,42 @@
 # CLI Reference
 
-Plan-AI exposes a Cobra command tree with 20+ commands. All commands run via `go run ./cmd/plan-ai <command>` or the built binary `plan-ai <command>`.
+Plan-AI exposes a Cobra command tree. Commands run as `plan-ai <command>` after installation or as `go run ./cmd/plan-ai <command>` from the repository.
 
 ## Global flags
 
 | Flag | Description |
 |------|-------------|
 | `-h, --help` | Help for any command |
-| `--config` | Config file (default `~/.plan-ai/config.yaml`) |
+| `--config` | Config file path, defaulting under `~/.plan-ai` |
+
+## Runtime stores
+
+- Global store: `~/.plan-ai/global.db`
+- Project store: `<project>/.plan-ai/project.db`
+
+Use `PLAN_AI_HOME` and `PLAN_AI_PROJECT_ROOT` for sandboxed validation.
 
 ## Commands
 
 ### `plan-ai install`
 
-Install global persistence.
+Create or migrate global persistence.
 
 ```bash
 plan-ai install
 ```
 
-Creates `~/.plan-ai/` with global SQLite store and schema migrations. Safe to re-run — idempotent. Exits with error if global store exists but migration fails.
+Idempotent. Creates the global store if missing and applies migrations.
 
 ### `plan-ai init`
 
-Initialize project store.
+Create or migrate project persistence.
 
 ```bash
 plan-ai init
 ```
 
-Creates `<project>/.plan-ai/` with project-scoped SQLite store and registers the project in the global store. Idempotent.
+Registers the current project and creates `<project>/.plan-ai/project.db`.
 
 ### `plan-ai status`
 
@@ -39,57 +46,56 @@ Show persistence and domain status.
 plan-ai status
 ```
 
-Output includes:
-- Global store path and size
-- Project store path and size
-- Whether both stores are healthy
-- Scanned project info
+Includes store status, scan state, and domain counts.
+
+### `plan-ai doctor`
+
+Check global/project stores, migrations, and integration health.
+
+```bash
+plan-ai doctor
+```
+
+Exit code is non-zero when checks fail.
 
 ### `plan-ai scan`
 
-Deterministic project scan.
+Run deterministic project scan.
 
 ```bash
 plan-ai scan
 ```
 
-Scans the project directory for:
-- Go module name and version
-- File counts and language distribution
-- Main entry points
-- Stack and dependency detection
-
-Output is deterministic JSON stored in the project store.
+Stores project metadata, file counts, stack hints, and fingerprint information.
 
 ### `plan-ai ingest`
 
-Classify and store input as a vision artifact.
+Classify and store input.
 
 ```bash
-plan-ai ingest --type <type> --content <content> [--source <source>]
+plan-ai ingest --type prompt --content "Build a planning assistant" --source cli
 ```
 
-Arguments:
-| Flag | Description | Required |
-|------|-------------|----------|
-| `--type` | Input type (`prompt`, `requirement`, `spec`, `ticket`, `feedback`) | Yes |
-| `--content` | Raw content | Yes |
-| `--source` | Source identifier | No |
+Supported types include `prompt`, `requirement`, `spec`, `ticket`, and `feedback`.
 
 ### `plan-ai vision`
 
-Create and manage vision drafts.
+Create and manage vision artifacts.
 
 ```bash
-plan-ai vision draft                    # Create new vision draft from ingested items
-plan-ai vision list [--limit N]         # List vision drafts
-plan-ai vision get <id>                 # Get a specific vision draft
-plan-ai vision approve <id>             # Approve a vision draft
-plan-ai vision status                   # Show discovery session status
-plan-ai vision begin                    # Begin discovery session
-plan-ai vision discover                 # Run discovery iteration
-plan-ai vision conclude                 # Conclude discovery
-plan-ai vision finalize                 # Finalize vision
+plan-ai vision draft
+plan-ai vision list --limit 10
+plan-ai vision get <id>
+plan-ai vision approve <id>
+plan-ai vision status
+plan-ai vision begin
+plan-ai vision discover
+plan-ai vision conclude
+plan-ai vision finalize
+plan-ai vision document --intent <intent_id>
+plan-ai vision documents
+plan-ai vision document-show <document_id>
+plan-ai vision approve-document <document_id>
 ```
 
 ### `plan-ai approved`
@@ -97,8 +103,9 @@ plan-ai vision finalize                 # Finalize vision
 Manage approved context.
 
 ```bash
-plan-ai approved list [--type <type>]               # List approved items
-plan-ai approved add --type <type> --content <c>    # Add approved item
+plan-ai approved add --type requirement "The app must save planning drafts"
+plan-ai approved add --type decision "Use SQLite for local persistence"
+plan-ai approved list
 ```
 
 ### `plan-ai research`
@@ -106,22 +113,24 @@ plan-ai approved add --type <type> --content <c>    # Add approved item
 Manage research entries.
 
 ```bash
-plan-ai research add --topic <topic> --summary <summary> [--source <source>]
-plan-ai research list [--topic <topic>] [--limit N]
+plan-ai research add --topic "Local-first planning" --summary "..." --source "manual"
+plan-ai research list --limit 10
 plan-ai research get <id>
-plan-ai research findings add --research-id <id> --finding <finding> [--source <source>]
-plan-ai research sources add --research-id <id> --url <url> --description <desc>
-plan-ai research conclusions add --research-id <id> --conclusion <conclusion>
+plan-ai research findings add --research-id <id> --finding "..."
+plan-ai research sources add --research-id <id> --url "https://example.com" --description "..."
+plan-ai research conclusions add --research-id <id> --conclusion "..."
 ```
 
 ### `plan-ai knowledge`
 
-Manage the reusable knowledge base.
+Manage reusable project knowledge.
 
 ```bash
-plan-ai knowledge add --topic <topic> --content <content> [--source <source>]
-plan-ai knowledge list [--topic <topic>] [--limit N]
-plan-ai knowledge get <id>
+plan-ai knowledge add --topic "Architecture" --content "Use local SQLite stores"
+plan-ai knowledge list
+plan-ai knowledge show <id>
+plan-ai knowledge search sqlite
+plan-ai knowledge reuse <id>
 ```
 
 ### `plan-ai plan`
@@ -129,27 +138,20 @@ plan-ai knowledge get <id>
 Generate planning artifacts.
 
 ```bash
-plan-ai plan master        # Generate master plan
-plan-ai plan specific      # Generate specific plan
-plan-ai plan impl-doc      # Generate implementation document
-plan-ai plan approve       # Approve plan
-plan-ai plan list          # List plans
+plan-ai plan master
+plan-ai plan specific
+plan-ai plan impl-doc
+plan-ai plan approve
+plan-ai plan list
 ```
 
 ### `plan-ai context`
 
-Executive context overview.
+Show executive context overview.
 
 ```bash
 plan-ai context
 ```
-
-Shows:
-- Vision status
-- Total approved items
-- Plan count and approval status
-- Research and knowledge counts
-- Project info
 
 ### `plan-ai capabilities`
 
@@ -159,34 +161,90 @@ List registered capabilities.
 plan-ai capabilities
 ```
 
-Outputs all registered capability IDs with descriptions.
+### `plan-ai intent`
 
-### `plan-ai doctor`
+Manage V2 intent profiles and V3 Product Intents.
 
-Check store paths, migrations, and OpenCode integration health.
+V2 profile detection:
 
 ```bash
-plan-ai doctor
+plan-ai intent detect --content "quiero un SaaS CRM"
+plan-ai intent latest
+plan-ai intent show <intent_id>
+plan-ai intent approve <intent_id>
 ```
 
-Runs the following checks:
-- Global store file exists and is readable
-- Global store has all required migrations applied
-- Project store file exists and is readable
-- Project store has all required migrations applied
-- OpenCode artifact directory exists
-- All expected OpenCode artifacts are present
+V3 Product Intent:
 
-Exit code is 0 if all checks pass, 1 if any check fails. Each check outputs `[PASS]` or `[FAIL]`.
+```bash
+plan-ai intent discover "Quiero crear un CRM para talleres mecánicos"
+plan-ai intent create \
+  --description "CRM for mechanic workshops" \
+  --expected-outcome "Workshops can track customers, vehicles, jobs, and follow-ups" \
+  --desired-experience "Simple, fast, Spanish-first workflow" \
+  --desired-result "A clear implementation plan before coding" \
+  --success-definition "A workshop owner can manage jobs without spreadsheets" \
+  --failure-definition "The tool becomes a generic CRM with no workshop-specific workflow"
+plan-ai intent list
+plan-ai intent submit <pintent_id>
+plan-ai intent approve <pintent_id>
+plan-ai intent show <pintent_id>
+```
+
+There is no `intent analyze` command in this release; use `intent discover` for raw ideas and `ambiguity analyze` for analysis.
+
+### `plan-ai discovery`
+
+Run progressive discovery for a V3 Product Intent.
+
+```bash
+plan-ai discovery init --intent <pintent_id>
+plan-ai discovery next --intent <pintent_id>
+plan-ai discovery next --intent <pintent_id> --level master_plan
+plan-ai discovery answer --intent <pintent_id> --question <question_id> --answer "..."
+plan-ai discovery v3-status --intent <pintent_id>
+```
+
+`init` creates deterministic questions across project, master plan, specific plan, phase, and task levels.
+
+### `plan-ai ambiguity`
+
+Analyze knowns, unknowns, assumptions, conflicts, and missing information.
+
+```bash
+plan-ai ambiguity analyze --input "Quiero un CRM moderno"
+plan-ai ambiguity analyze --intent <pintent_id>
+```
+
+### `plan-ai confidence`
+
+Evaluate how well Plan-AI understands a Product Intent.
+
+```bash
+plan-ai confidence evaluate --intent <pintent_id>
+```
+
+Output includes component scores and final intent confidence.
+
+### `plan-ai alignment`
+
+Review whether outcomes, plans, and tasks remain aligned to Product Intent.
+
+```bash
+plan-ai alignment review --intent <pintent_id> --outcome "..." --plan "..." --task "..."
+plan-ai alignment context --intent <pintent_id>
+plan-ai alignment references
+plan-ai alignment framework --intent <pintent_id>
+```
 
 ### `plan-ai agent`
 
 Agent system management.
 
 ```bash
-plan-ai agent status            # Show agent status
-plan-ai agent process           # Trigger agent processing
-plan-ai agent list              # List agents and their capabilities
+plan-ai agent status
+plan-ai agent process
+plan-ai agent list
 ```
 
 ### `plan-ai continuous`
@@ -194,57 +252,66 @@ plan-ai agent list              # List agents and their capabilities
 Continuous planning engine.
 
 ```bash
-plan-ai continuous status       # Show continuous planning status
-plan-ai continuous events       # List detected events
-plan-ai continuous proposals    # List generated proposals
+plan-ai continuous status
+plan-ai continuous events
+plan-ai continuous proposals
 ```
 
 ### `plan-ai next`
 
-Get the next pending task.
+Show the highest-priority unfinished task.
 
 ```bash
 plan-ai next
 ```
 
-Returns the highest-priority unfinished task or `info: no pending tasks`.
-
 ### `plan-ai setup opencode`
 
 Generate OpenCode integration artifacts.
 
+Safe mode:
+
 ```bash
-plan-ai setup opencode
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai setup opencode
 ```
 
-Generates all six integration artifacts under `$OPENCODE_CONFIG_DIR`:
-1. `opencode.json` — minimal config
-2. `mcp-registry.json` — tool registry
-3. `agents/plan-ai.json` — agent descriptor
-4. `profiles.json` — integration profiles
-5. `prompts.json` — prompt templates
-6. `.plan-ai/opencode-sync.json` — sync marker
+Real OpenCode config requires explicit opt-in:
 
-Exits with error if `OPENCODE_CONFIG_DIR` is not set.
+```bash
+plan-ai setup opencode --allow-real-opencode
+```
 
 ### `plan-ai validate`
 
-V2 validation suites.
+Run deterministic validation suites.
 
 ```bash
-plan-ai validate v2           # Run all 63 V2 validation checks (7 cases × 9 stages)
-plan-ai validate cases        # List all 7 project categories used in V2 validation
+plan-ai validate v2
+plan-ai validate cases
 ```
-
-The `validate v2` command runs a deterministic in-memory validation engine that checks every project case through every V2 stage. Reports total/passed/failed counts. Exits with error if any check fails.
-
-The `validate cases` command lists each project category (SaaS, Ecommerce, Landing Page, MCP Server, Mobile App, API, CRM) with description, idea, and intent count.
 
 ### `plan-ai dev`
 
 Development inspection helpers.
 
 ```bash
-plan-ai dev store <key>         # Inspect store contents
-plan-ai dev reset               # Reset project store
+plan-ai dev seed-domain
+plan-ai dev list-domain
+plan-ai dev seed-knowledge
+plan-ai dev store <key>
+plan-ai dev reset
+```
+
+`dev reset` is destructive for the current project store. Do not use it against user data.
+
+## Release validation commands
+
+```bash
+gofmt -w cmd internal
+go test ./...
+go vet ./...
+go build ./...
+bash scripts/test-sandbox.sh
+bash scripts/test-vps-clean.sh
+bash scripts/release-check.sh
 ```

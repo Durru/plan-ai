@@ -9,10 +9,10 @@ import (
 
 // Service implements Phase 51 Product Intent Engine + Phase 52 Discovery.
 type Service struct {
-	intentRepo    ProductIntentRepository
-	discoverRepo  DiscoveryResultRepository
-	detector      Detector
-	now           func() time.Time
+	intentRepo   ProductIntentRepository
+	discoverRepo DiscoveryResultRepository
+	detector     Detector
+	now          func() time.Time
 }
 
 func NewService(intentRepo ProductIntentRepository, discoverRepo DiscoveryResultRepository) Service {
@@ -29,13 +29,13 @@ func NewService(intentRepo ProductIntentRepository, discoverRepo DiscoveryResult
 // ──────────────────────────────────────────────
 
 type CreateProductIntentInput struct {
-	ProjectID        string
-	Description      string
-	ExpectedOutcome  string
+	ProjectID         string
+	Description       string
+	ExpectedOutcome   string
 	DesiredExperience string
-	DesiredResult    string
-	UserExpectations []string
-	NonExpectations  []string
+	DesiredResult     string
+	UserExpectations  []string
+	NonExpectations   []string
 	SuccessDefinition string
 	FailureDefinition string
 	DiscoveryResultID string // optional link to Phase 52 result
@@ -50,20 +50,20 @@ func (s Service) CreateProductIntent(input CreateProductIntentInput) (ProductInt
 	}
 	now := s.now().UTC()
 	pi := ProductIntent{
-		ID:                 domain.NewID("pintent"),
-		ProjectID:          input.ProjectID,
-		Description:        input.Description,
-		ExpectedOutcome:    input.ExpectedOutcome,
-		DesiredExperience:  input.DesiredExperience,
-		DesiredResult:      input.DesiredResult,
-		UserExpectations:   input.UserExpectations,
-		NonExpectations:    input.NonExpectations,
-		SuccessDefinition:  input.SuccessDefinition,
-		FailureDefinition:  input.FailureDefinition,
-		Status:             StatusDraft,
-		DiscoveryResultID:  input.DiscoveryResultID,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:                domain.NewID("pintent"),
+		ProjectID:         input.ProjectID,
+		Description:       input.Description,
+		ExpectedOutcome:   input.ExpectedOutcome,
+		DesiredExperience: input.DesiredExperience,
+		DesiredResult:     input.DesiredResult,
+		UserExpectations:  input.UserExpectations,
+		NonExpectations:   input.NonExpectations,
+		SuccessDefinition: input.SuccessDefinition,
+		FailureDefinition: input.FailureDefinition,
+		Status:            StatusDraft,
+		DiscoveryResultID: input.DiscoveryResultID,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 	return s.intentRepo.SaveProductIntent(pi)
 }

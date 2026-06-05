@@ -418,15 +418,15 @@ func RegisterDefaultTools(s *Server, deps *ToolDependencies) error {
 			Schema: JSONSchema{
 				Type: "object",
 				Properties: map[string]Property{
-					"project_root":       {Type: "string", Description: "Project root path"},
-					"description":        {Type: "string", Description: "Product intent description", Required: true},
-					"expected_outcome":   {Type: "string", Description: "What outcome is expected"},
-					"desired_experience": {Type: "string", Description: "How the user expects the experience to feel"},
-					"desired_result":     {Type: "string", Description: "Tangible desired result"},
-					"user_expectations":  {Type: "string", Description: "Newline-separated list of what the user expects"},
-					"non_expectations":   {Type: "string", Description: "Newline-separated list of what is NOT expected"},
-					"success_definition": {Type: "string", Description: "How success is measured"},
-					"failure_definition": {Type: "string", Description: "What would constitute failure"},
+					"project_root":        {Type: "string", Description: "Project root path"},
+					"description":         {Type: "string", Description: "Product intent description", Required: true},
+					"expected_outcome":    {Type: "string", Description: "What outcome is expected"},
+					"desired_experience":  {Type: "string", Description: "How the user expects the experience to feel"},
+					"desired_result":      {Type: "string", Description: "Tangible desired result"},
+					"user_expectations":   {Type: "string", Description: "Newline-separated list of what the user expects"},
+					"non_expectations":    {Type: "string", Description: "Newline-separated list of what is NOT expected"},
+					"success_definition":  {Type: "string", Description: "How success is measured"},
+					"failure_definition":  {Type: "string", Description: "What would constitute failure"},
 					"discovery_result_id": {Type: "string", Description: "Link to a Phase 52 discovery result"},
 				},
 				Required: []string{"description"},
@@ -564,10 +564,10 @@ type ToolDependencies struct {
 	RollbackSnapshot func(args map[string]any) (map[string]any, error)
 	ExportDocs       func(args map[string]any) (map[string]any, error)
 	// Phase 51: Product Intent Engine
-	CreateProductIntent func(args map[string]any) (map[string]any, error)
-	ListProductIntents  func(args map[string]any) (map[string]any, error)
-	GetProductIntent    func(args map[string]any) (map[string]any, error)
-	SubmitProductIntent func(args map[string]any) (map[string]any, error)
+	CreateProductIntent  func(args map[string]any) (map[string]any, error)
+	ListProductIntents   func(args map[string]any) (map[string]any, error)
+	GetProductIntent     func(args map[string]any) (map[string]any, error)
+	SubmitProductIntent  func(args map[string]any) (map[string]any, error)
 	ApproveProductIntent func(args map[string]any) (map[string]any, error)
 	RejectProductIntent  func(args map[string]any) (map[string]any, error)
 	// Phase 52: Discovery Engine

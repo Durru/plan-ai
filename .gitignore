@@ -12,9 +12,12 @@ coverage.out
 *.sqlite
 *.sqlite3
 
-# Logs and cache
+# Logs, environment, and cache
 *.log
 logs/
+.env
+.env.*
+!.env.example
 cache/
 .cache/
 
@@ -32,7 +35,7 @@ cache/
 .DS_Store
 Thumbs.db
 
-# Build artifacts
-plan-ai
-mcp-server
+# Build artifacts (root binaries only)
+/plan-ai
+/mcp-server
 *.exe

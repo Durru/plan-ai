@@ -790,6 +790,190 @@ for expected in \
 done
 printf 'Phase 49-50 V2 validation: OK\n'
 
+# Phase 51-52: V3 Product Intent Engine + Discovery
+V3_DISCOVER_OUTPUT=$(go run ./cmd/plan-ai intent discover "Build a CLI tool for Go developers")
+printf '%s\n' "$V3_DISCOVER_OUTPUT"
+V3_CREATE_OUTPUT=$(go run ./cmd/plan-ai intent create --description "Build a CLI tool" --expected-outcome "Happy developers" --desired-experience "Fast iteration")
+printf '%s\n' "$V3_CREATE_OUTPUT"
+V3_INTENT_ID=$(printf '%s\n' "$V3_CREATE_OUTPUT" | grep 'pintent_' | awk '{print $NF; exit}')
+V3_LIST_OUTPUT=$(go run ./cmd/plan-ai intent list)
+printf '%s\n' "$V3_LIST_OUTPUT"
+V3_SHOW_OUTPUT=$(go run ./cmd/plan-ai intent show "$V3_INTENT_ID")
+printf '%s\n' "$V3_SHOW_OUTPUT"
+V3_SUBMIT_OUTPUT=$(go run ./cmd/plan-ai intent submit "$V3_INTENT_ID")
+printf '%s\n' "$V3_SUBMIT_OUTPUT"
+V3_APPROVE_OUTPUT=$(go run ./cmd/plan-ai intent approve "$V3_INTENT_ID")
+printf '%s\n' "$V3_APPROVE_OUTPUT"
+
+for expected in 'Discovery Result:' 'Detected Intent:'; do
+  if [[ "$V3_DISCOVER_OUTPUT" != *"$expected"* ]]; then
+    printf 'v3 discover missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+for expected in 'Product Intent created:' 'pintent_'; do
+  if [[ "$V3_CREATE_OUTPUT" != *"$expected"* ]]; then
+    printf 'v3 create missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+if [[ "$V3_LIST_OUTPUT" != *"$V3_INTENT_ID"* ]]; then
+  printf 'v3 list missing created intent\n' >&2
+  exit 1
+fi
+for expected in 'Product Intent:' 'Build a CLI tool' 'draft'; do
+  if [[ "$V3_SHOW_OUTPUT" != *"$expected"* ]]; then
+    printf 'v3 show missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+for expected in 'submitted for approval' 'pending_approval'; do
+  if [[ "$V3_SUBMIT_OUTPUT" != *"$expected"* ]]; then
+    printf 'v3 submit missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+for expected in 'Product Intent approved:' 'approved'; do
+  if [[ "$V3_APPROVE_OUTPUT" != *"$expected"* ]]; then
+    printf 'v3 approve missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+printf 'Phase 51-52 V3 product intent: OK\n'
+
+# ── Phase 53: Progressive Discovery System ──
+V3_DISCOVERY_INIT_OUTPUT=$(go run ./cmd/plan-ai discovery init --intent "$V3_INTENT_ID" 2>&1)
+printf '%s\n' "$V3_DISCOVERY_INIT_OUTPUT"
+for expected in 'Progressive discovery initialized for intent' "$V3_INTENT_ID"; do
+  if [[ "$V3_DISCOVERY_INIT_OUTPUT" != *"$expected"* ]]; then
+    printf 'discovery init missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+V3_DISCOVERY_NEXT_OUTPUT=$(go run ./cmd/plan-ai discovery next --intent "$V3_INTENT_ID" 2>&1)
+printf '%s\n' "$V3_DISCOVERY_NEXT_OUTPUT"
+for expected in 'Discovery level:' 'project' 'What is the main goal' 'required'; do
+  if [[ "$V3_DISCOVERY_NEXT_OUTPUT" != *"$expected"* ]]; then
+    printf 'discovery next missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+# Extract first question ID and answer it
+FIRST_QID=$(printf '%s\n' "$V3_DISCOVERY_NEXT_OUTPUT" | grep -E '^  \[discq_' | head -1 | awk '{print $1}' | tr -d '[]')
+V3_DISCOVERY_ANSWER_OUTPUT=$(go run ./cmd/plan-ai discovery answer --question "$FIRST_QID" --intent "$V3_INTENT_ID" --answer "Build a CLI for project planning" 2>&1)
+printf '%s\n' "$V3_DISCOVERY_ANSWER_OUTPUT"
+for expected in 'Answer recorded:' 'discans'; do
+  if [[ "$V3_DISCOVERY_ANSWER_OUTPUT" != *"$expected"* ]]; then
+    printf 'discovery answer missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+V3_DISCOVERY_STATUS_OUTPUT=$(go run ./cmd/plan-ai discovery v3-status --intent "$V3_INTENT_ID" 2>&1)
+printf '%s\n' "$V3_DISCOVERY_STATUS_OUTPUT"
+for expected in 'Current Level:' '1 answered' 'project'; do
+  if [[ "$V3_DISCOVERY_STATUS_OUTPUT" != *"$expected"* ]]; then
+    printf 'discovery v3-status missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+printf 'Phase 53 Progressive discovery: OK\n'
+
+# ── Phase 54: Ambiguity Detection Engine ──
+AMBIGUITY_INPUT_OUTPUT=$(go run ./cmd/plan-ai ambiguity analyze --input "Maybe build something simple later")
+printf '%s\n' "$AMBIGUITY_INPUT_OUTPUT"
+for expected in \
+  'Ambiguity Report' \
+  'Ambiguity Score:' \
+  'Missing Information:' \
+  'Assumptions:' \
+  'Needs To Know:'; do
+  if [[ "$AMBIGUITY_INPUT_OUTPUT" != *"$expected"* ]]; then
+    printf 'ambiguity input missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+AMBIGUITY_INTENT_OUTPUT=$(go run ./cmd/plan-ai ambiguity analyze --intent "$V3_INTENT_ID")
+printf '%s\n' "$AMBIGUITY_INTENT_OUTPUT"
+for expected in \
+  'Ambiguity Report' \
+  "$V3_INTENT_ID" \
+  'Unknown Areas:' \
+  'Needs To Know:'; do
+  if [[ "$AMBIGUITY_INTENT_OUTPUT" != *"$expected"* ]]; then
+    printf 'ambiguity intent missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+printf 'Phase 54 Ambiguity detection: OK\n'
+
+# ── Phase 55: Intent Confidence Engine ──
+CONFIDENCE_OUTPUT=$(go run ./cmd/plan-ai confidence evaluate --intent "$V3_INTENT_ID")
+printf '%s\n' "$CONFIDENCE_OUTPUT"
+for expected in \
+  'Intent Confidence Report' \
+  'Intent Confidence:' \
+  'Intent Score:' \
+  'Vision Score:' \
+  'UX Score:' \
+  'Business Score:' \
+  'Requirements Score:' \
+  'Constraints Score:'; do
+  if [[ "$CONFIDENCE_OUTPUT" != *"$expected"* ]]; then
+    printf 'confidence missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+printf 'Phase 55 Intent confidence: OK\n'
+
+# ── Phases 56-70: Intent-to-Implementation Alignment Framework ──
+ALIGNMENT_REVIEW_OUTPUT=$(go run ./cmd/plan-ai alignment review --intent "$V3_INTENT_ID" --outcome "Happy developers use the CLI" --plan "Build a CLI tool for happy developers" --task "Implement CLI workflow")
+printf '%s\n' "$ALIGNMENT_REVIEW_OUTPUT"
+for expected in \
+  'Product Alignment Review' \
+  'Project Review:' \
+  'Intent Review:' \
+  'Vision Review:' \
+  'Outcome Review:' \
+  'Alignment Review:' \
+  'Continuous Health:'; do
+  if [[ "$ALIGNMENT_REVIEW_OUTPUT" != *"$expected"* ]]; then
+    printf 'alignment review missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+ALIGNMENT_CONTEXT_OUTPUT=$(go run ./cmd/plan-ai alignment context --intent "$V3_INTENT_ID")
+printf '%s\n' "$ALIGNMENT_CONTEXT_OUTPUT"
+for expected in 'Alignment Context' 'What To Do:' 'Why It Exists:' 'Desired Outcome:'; do
+  if [[ "$ALIGNMENT_CONTEXT_OUTPUT" != *"$expected"* ]]; then
+    printf 'alignment context missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+ALIGNMENT_REFERENCES_OUTPUT=$(go run ./cmd/plan-ai alignment references)
+printf '%s\n' "$ALIGNMENT_REFERENCES_OUTPUT"
+for expected in 'Reference Products' 'Linear' 'Notion' 'Stripe' 'GitHub' 'Slack' 'Monday'; do
+  if [[ "$ALIGNMENT_REFERENCES_OUTPUT" != *"$expected"* ]]; then
+    printf 'alignment references missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+
+ALIGNMENT_FRAMEWORK_OUTPUT=$(go run ./cmd/plan-ai alignment framework --intent "$V3_INTENT_ID")
+printf '%s\n' "$ALIGNMENT_FRAMEWORK_OUTPUT"
+for expected in 'Intent-To-Implementation Framework' 'Ready: true' 'Intent' 'Discovery' 'Approval' 'Alignment'; do
+  if [[ "$ALIGNMENT_FRAMEWORK_OUTPUT" != *"$expected"* ]]; then
+    printf 'alignment framework missing expected output: %s\n' "$expected" >&2
+    exit 1
+  fi
+done
+printf 'Phases 56-70 Alignment framework: OK\n'
+
 if [[ -f "$PROJECT_DB" ]]; then
   for table in \
     vision_discovery_sessions vision_assumptions vision_ambiguities vision_approvals \
@@ -799,7 +983,9 @@ if [[ -f "$PROJECT_DB" ]]; then
     context_packages_v2 research_orchestration_runs project_references_v2 \
     plan_evolution_blueprints_v3 implementation_packages_v2 \
     change_impact_reports_v2 continuous_regenerations_v2 \
-    subagent_tasks_v2 opencode_workflows_v2; do
+    subagent_tasks_v2 opencode_workflows_v2 \
+    intent_v3_product_intents intent_v3_discovery_results \
+    discovery_v3_questions discovery_v3_answers; do
     COUNT=$(sqlite3 "$PROJECT_DB" "SELECT COUNT(*) FROM $table LIMIT 0;" 2>/dev/null)
     if [[ $? -eq 0 ]]; then
       printf '  Table %s: OK\n' "$table"

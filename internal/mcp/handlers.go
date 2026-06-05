@@ -1337,16 +1337,16 @@ func HandleCreateProductIntent(args map[string]any) (map[string]any, error) {
 	svc := intentv3.NewService(intentRepo, discRepo)
 
 	pi, err := svc.CreateProductIntent(intentv3.CreateProductIntentInput{
-		ProjectID:          projectID(projectRoot),
-		Description:        description,
-		ExpectedOutcome:    expectedOutcome,
-		DesiredExperience:  desiredExperience,
-		DesiredResult:      desiredResult,
-		UserExpectations:   userExpectations,
-		NonExpectations:    nonExpectations,
-		SuccessDefinition:  getStringArg(args, "success_definition"),
-		FailureDefinition:  getStringArg(args, "failure_definition"),
-		DiscoveryResultID:  getStringArg(args, "discovery_result_id"),
+		ProjectID:         projectID(projectRoot),
+		Description:       description,
+		ExpectedOutcome:   expectedOutcome,
+		DesiredExperience: desiredExperience,
+		DesiredResult:     desiredResult,
+		UserExpectations:  userExpectations,
+		NonExpectations:   nonExpectations,
+		SuccessDefinition: getStringArg(args, "success_definition"),
+		FailureDefinition: getStringArg(args, "failure_definition"),
+		DiscoveryResultID: getStringArg(args, "discovery_result_id"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create product intent: %w", err)

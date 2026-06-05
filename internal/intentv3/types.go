@@ -21,20 +21,20 @@ const (
 // ──────────────────────────────────────────────
 
 type ProductIntent struct {
-	ID                 string
-	ProjectID          string
-	Description        string
-	ExpectedOutcome    string
-	DesiredExperience  string
-	DesiredResult      string
-	UserExpectations   []string
-	NonExpectations    []string
-	SuccessDefinition  string
-	FailureDefinition  string
-	Status             ProductIntentStatus
-	DiscoveryResultID  string // link to Phase 52 result, empty if manual
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                string
+	ProjectID         string
+	Description       string
+	ExpectedOutcome   string
+	DesiredExperience string
+	DesiredResult     string
+	UserExpectations  []string
+	NonExpectations   []string
+	SuccessDefinition string
+	FailureDefinition string
+	Status            ProductIntentStatus
+	DiscoveryResultID string // link to Phase 52 result, empty if manual
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // ──────────────────────────────────────────────
@@ -42,19 +42,19 @@ type ProductIntent struct {
 // ──────────────────────────────────────────────
 
 type DiscoveryResult struct {
-	ID               string
-	ProjectID        string
-	RawInput         string
-	DetectedIntent   string
-	Objectives       []string
-	Restrictions     []string
-	Preferences      []string
-	References       []string
-	Expectations     []string
-	Classification   string
-	Gaps             []string
-	Questions        []string
-	CreatedAt        time.Time
+	ID             string
+	ProjectID      string
+	RawInput       string
+	DetectedIntent string
+	Objectives     []string
+	Restrictions   []string
+	Preferences    []string
+	References     []string
+	Expectations   []string
+	Classification string
+	Gaps           []string
+	Questions      []string
+	CreatedAt      time.Time
 }
 
 // ──────────────────────────────────────────────

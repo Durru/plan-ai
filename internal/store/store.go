@@ -573,6 +573,11 @@ CREATE INDEX IF NOT EXISTS idx_research_knowledge_links_knowledge_id ON research
 			Name: "Create V3 product intent and discovery tables (Phase 51+52)",
 			SQL:  projectV3ProductIntentSQL,
 		},
+		{
+			ID:   "0041_v3_discovery_progressive",
+			Name: "Create V3 progressive discovery tables (Phase 53)",
+			SQL:  projectV3DiscoveryProgressiveSQL,
+		},
 	})
 }
 

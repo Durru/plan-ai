@@ -1,77 +1,64 @@
 # OpenCode Integration
 
-Plan-AI integrates with OpenCode to detect existing configuration and
-expose planning tools via MCP. The integration is **read-only by default**
-and operates in one of three modes.
+Plan-AI can generate OpenCode integration artifacts so an OpenCode setup can call Plan-AI planning tools through MCP.
 
-## Integration Modes
+The integration is safe by default: it does **not** write to a real OpenCode config unless the user explicitly opts in.
+
+## Safe sandbox setup
+
+Recommended for tests and validation:
+
+```bash
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai setup opencode
+```
+
+Generated artifacts:
+
+- `$OPENCODE_CONFIG_DIR/opencode.json`
+- `$OPENCODE_CONFIG_DIR/mcp-registry.json`
+- `$OPENCODE_CONFIG_DIR/agents/plan-ai.json`
+- `$OPENCODE_CONFIG_DIR/profiles.json`
+- `$OPENCODE_CONFIG_DIR/prompts.json`
+- `$OPENCODE_CONFIG_DIR/plan-ai-workflows.json`
+- `<project>/.plan-ai/opencode-sync.json`
+
+## Real OpenCode setup
+
+Only use this when you intentionally want to update the real OpenCode config area:
+
+```bash
+plan-ai setup opencode --allow-real-opencode
+```
+
+If `OPENCODE_CONFIG_DIR` is not set and `--allow-real-opencode` is not passed, the command exits with an error. This protects `~/.config/opencode` from accidental test writes.
+
+## Integration modes
 
 | Mode | Description |
 |------|-------------|
 | `standalone` | Plan-AI runs independently, no MCP bridge |
-| `tool` | Plan-AI exposes tools for OpenCode MCP (default) |
+| `tool` | Plan-AI exposes tools for OpenCode MCP |
 | `hybrid` | Both modes active simultaneously |
 
-## Components
+## Doctor
 
-### Detector
-
-The OpenCode detector (`internal/opencode/detector.go`) searches for
-OpenCode configuration in:
-
-1. `opencode.json` in project root
-2. `opencode.jsonc` in project root
-3. `.opencode/opencode.json` (or .jsonc) in project root
-4. Parent directory `opencode.json[c]` for workspace-level config
-
-It extracts: agent name, agent role, skill count, and self-init capability.
-
-### Config
-
-The integration config (`internal/opencode/config.go`) is stored at
-`<plan-ai-home>/opencode-integration.json`:
-
-```json
-{
-  "enabled": true,
-  "mode": "tool",
-  "auto_detect": true,
-  "warn_on_conflict": true,
-  "read_only": true,
-  "doctor_checks": ["version", "config", "mcp"]
-}
+```bash
+plan-ai doctor
 ```
 
-### Tool Registry
+Doctor checks store paths, migrations, and OpenCode integration health when integration state exists.
 
-The MCP tool registry (`internal/opencode/registry.go`) maintains the list
-of tools that Plan-AI exposes to OpenCode, tracking how many plans each
-tool has built.
+## Architecture
 
-### Doctor
+Relevant packages:
 
-The doctor (`internal/opencode/doctor.go`) runs integration health checks:
+- `internal/opencode/` — detection, config, registry, doctor checks, artifact generation.
+- `internal/mcp/` — MCP tool definitions and handlers.
+- `cmd/mcp-server/` — stdio MCP server entry point.
 
-- **version** — checks OpenCode config compatibility
-- **config** — validates integration config integrity
-- **mcp** — verifies MCP tool registration
+## Safety rules
 
-### Database Tables
-
-The OpenCode integration persists to:
-- `opencode_detections` — detection history
-- `opencode_integration_state` — current integration mode
-- `opencode_doctor_checks` — health check results
-
-## Doctor CLI
-
-```sh
-plan-ai doctor              # includes opencode checks when integration is enabled
-plan-ai doctor --help       # show all check options
-```
-
-## Architecture Decision
-
-Per ADR-0017, the integration is deliberately **read-only**: Plan-AI detects
-OpenCode configuration but never modifies it. This prevents accidental
-corruption of OpenCode setup while still enabling co-existence.
+- Use `OPENCODE_CONFIG_DIR` in tests.
+- Do not commit generated OpenCode config containing local paths or secrets.
+- Do not run with `--allow-real-opencode` in CI.
+- Keep `.plan-ai/` out of git; the sync marker is runtime state.
