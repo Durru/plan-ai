@@ -231,7 +231,7 @@ func (s *SetupService) mergePlanAIIntoOpenCodeConfig(path, projectRoot string) e
 		return fmt.Errorf("read existing opencode config: %w", err)
 	}
 	var cfg map[string]any
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal(stripJSONCComments(data), &cfg); err != nil {
 		return fmt.Errorf("parse existing opencode config: %w", err)
 	}
 	mcpRaw, ok := cfg["mcp"].(map[string]any)
@@ -264,6 +264,61 @@ func (s *SetupService) mergePlanAIIntoOpenCodeConfig(path, projectRoot string) e
 		return fmt.Errorf("write merged opencode config: %w", err)
 	}
 	return nil
+}
+
+func stripJSONCComments(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	inString := false
+	escaped := false
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+		if inString {
+			out = append(out, ch)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if ch == '"' {
+			inString = true
+			out = append(out, ch)
+			continue
+		}
+		if ch == '/' && i+1 < len(data) {
+			next := data[i+1]
+			if next == '/' {
+				for i < len(data) && data[i] != '\n' {
+					i++
+				}
+				if i < len(data) {
+					out = append(out, data[i])
+				}
+				continue
+			}
+			if next == '*' {
+				i += 2
+				for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+					if data[i] == '\n' {
+						out = append(out, '\n')
+					}
+					i++
+				}
+				i++
+				continue
+			}
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 // writeMCPRegistry writes a Plan-AI MCP tool registry artifact.

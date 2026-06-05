@@ -142,6 +142,49 @@ func TestSetupService_DetectsExistingJSONC(t *testing.T) {
 	}
 }
 
+func TestSetupService_MergesPlanAIMCPIntoCommentedJSONC(t *testing.T) {
+	opencodeDir := t.TempDir()
+	projectRoot := t.TempDir()
+
+	existingPath := filepath.Join(opencodeDir, "opencode.jsonc")
+	if err := os.WriteFile(existingPath, []byte(`{
+  // Existing OpenCode config with comments
+  "agent_name": "jsonc-agent",
+  "mcp": {
+    "existing": { "type": "local", "command": ["existing"] }
+  }
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewSetupService().Run(opencodeDir, projectRoot)
+	if err != nil {
+		t.Fatalf("SetupService.Run with commented JSONC: %v", err)
+	}
+	if result.OpenCodeConfigPath != existingPath {
+		t.Fatalf("expected config path %q, got %q", existingPath, result.OpenCodeConfigPath)
+	}
+
+	data, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("merged JSONC should be valid JSON after write: %v\n%s", err, data)
+	}
+	if cfg["agent_name"] != "jsonc-agent" {
+		t.Fatalf("agent_name = %v", cfg["agent_name"])
+	}
+	mcpMap := cfg["mcp"].(map[string]any)
+	if _, ok := mcpMap["existing"]; !ok {
+		t.Fatalf("existing mcp missing: %#v", mcpMap)
+	}
+	if _, ok := mcpMap["plan-ai"]; !ok {
+		t.Fatalf("plan-ai mcp missing: %#v", mcpMap)
+	}
+}
+
 func TestSetupService_DetectsDotOpenCode(t *testing.T) {
 	opencodeDir := t.TempDir()
 	projectRoot := t.TempDir()
