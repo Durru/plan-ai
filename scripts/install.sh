@@ -38,6 +38,9 @@ printf 'Installed: %s\n' "$MCP_BIN"
 
 if [[ "${PLAN_AI_SKIP_INIT:-0}" != "1" ]]; then
   "$PLAN_AI_BIN" install
+  # Gentle-AI installer: create state.json with full preset.
+  # To wire OpenCode integration, run: plan-ai sync --allow-real-opencode
+  "$PLAN_AI_BIN" install --preset full-plan-ai --bin-dir "$BIN_DIR" 2>/dev/null || true
 else
   printf 'Skipped global store initialization because PLAN_AI_SKIP_INIT=1\n'
 fi
