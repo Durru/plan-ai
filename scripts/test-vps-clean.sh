@@ -11,7 +11,10 @@ fi
 
 cleanup() {
   if [[ "$KEEP" -eq 0 ]]; then
-    rm -rf "$SANDBOX"
+    if [[ -e "$SANDBOX" ]]; then
+      chmod -R u+w "$SANDBOX" 2>/dev/null || true
+      rm -rf "$SANDBOX"
+    fi
     printf 'VPS_SANDBOX_CLEANED\n'
   else
     printf 'VPS sandbox kept at %s\n' "$SANDBOX"

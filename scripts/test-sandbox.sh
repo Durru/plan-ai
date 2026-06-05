@@ -13,7 +13,10 @@ mkdir -p "$SANDBOX/home" "$SANDBOX/project" "$SANDBOX/opencode-config"
 
 cleanup() {
   if [[ "$KEEP" -eq 0 ]]; then
-    rm -rf "$SANDBOX"
+    if [[ -e "$SANDBOX" ]]; then
+      chmod -R u+w "$SANDBOX" 2>/dev/null || true
+      rm -rf "$SANDBOX"
+    fi
     printf 'SANDBOX_CLEANED\n'
   else
     printf 'Sandbox kept at %s\n' "$SANDBOX"
