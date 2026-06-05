@@ -24,6 +24,7 @@ import (
 	"github.com/plan-ai/plan-ai/internal/discoveryv3"
 	"github.com/plan-ai/plan-ai/internal/domain"
 	"github.com/plan-ai/plan-ai/internal/ingestion"
+	"github.com/plan-ai/plan-ai/internal/installer"
 	"github.com/plan-ai/plan-ai/internal/intent"
 	"github.com/plan-ai/plan-ai/internal/intentv3"
 	"github.com/plan-ai/plan-ai/internal/knowledge"
@@ -67,6 +68,8 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newInstallCommand())
 	cmd.AddCommand(newInitCommand())
 	cmd.AddCommand(newBootstrapCommand())
+	cmd.AddCommand(newSyncCommand())
+	cmd.AddCommand(newUninstallCommand())
 	cmd.AddCommand(newScanCommand())
 	cmd.AddCommand(newKnowledgeCommand())
 	cmd.AddCommand(newResearchCommand())
@@ -199,7 +202,7 @@ func newBootstrapCommand() *cobra.Command {
 func newDoctorCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Check Plan-AI store paths, migration status, and OpenCode integration.",
+		Short: "Check Plan-AI health: store, migrations, OpenCode, and component installation.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := resolveHomeRoot()
 			if err != nil {
@@ -213,6 +216,8 @@ func newDoctorCommand() *cobra.Command {
 			projectDB := config.ProjectDBPath(projectRoot)
 			out := cmd.OutOrStdout()
 			fmt.Fprintln(out, "Plan-AI doctor")
+			fmt.Fprintln(out, "")
+			fmt.Fprintln(out, "--- Storage ---")
 			fmt.Fprintf(out, "Global db: %s (%s)\n", globalDB, installedLabel(config.GlobalDir(home), globalDB))
 			fmt.Fprintf(out, "Project db: %s (%s)\n", projectDB, initializedLabel(config.ProjectDir(projectRoot), projectDB))
 			if pathExists(globalDB) {
@@ -240,23 +245,23 @@ func newDoctorCommand() *cobra.Command {
 
 			// OpenCode integration check
 			fmt.Fprintln(out, "")
-			fmt.Fprintln(out, "OpenCode integration:")
+			fmt.Fprintln(out, "--- OpenCode Integration ---")
 			detector := opencode.NewDetector()
 			detected := detector.Detect(projectRoot)
 			if detected.Found {
-				fmt.Fprintf(out, "  Config found: %s\n", detected.ConfigPath)
+				fmt.Fprintf(out, "Config found: %s\n", detected.ConfigPath)
 				if detected.AgentName != "" {
-					fmt.Fprintf(out, "  Agent: %s\n", detected.AgentName)
+					fmt.Fprintf(out, "Agent: %s\n", detected.AgentName)
 				}
-				fmt.Fprintf(out, "  Skills: %d\n", detected.SkillCount)
-				fmt.Fprintf(out, "  Initialized: %v\n", detected.IsInitialized)
+				fmt.Fprintf(out, "Skills: %d\n", detected.SkillCount)
+				fmt.Fprintf(out, "Initialized: %v\n", detected.IsInitialized)
 			} else {
-				fmt.Fprintln(out, "  No OpenCode config detected (standalone mode)")
+				fmt.Fprintln(out, "No OpenCode config detected (standalone mode)")
 			}
 
 			ocCfg, err := opencode.LoadConfig(home)
 			if err == nil {
-				fmt.Fprintf(out, "  Integration mode: %s (enabled: %v, read-only: %v)\n", ocCfg.Mode, ocCfg.Enabled, ocCfg.ReadOnly)
+				fmt.Fprintf(out, "Integration mode: %s (enabled: %v, read-only: %v)\n", ocCfg.Mode, ocCfg.Enabled, ocCfg.ReadOnly)
 			}
 
 			doc := opencode.NewDoctor()
@@ -265,56 +270,206 @@ func newDoctorCommand() *cobra.Command {
 				fmt.Fprintf(out, "  [%s] %s\n", c.Status, c.Message)
 			}
 
+			// Installer-based health report
+			fmt.Fprintln(out, "")
+			fmt.Fprintln(out, "--- Component Installation (Gentle-AI) ---")
+			inst := installer.NewInstaller(home)
+			report := inst.Doctor()
+			fmt.Fprintf(out, "State exists:  %v\n", report.StateExists)
+			if report.StateValid {
+				fmt.Fprintf(out, "Preset:        %s\n", report.Preset)
+				fmt.Fprintf(out, "Components:    %d/%d installed\n", report.ComponentsInstalled, report.ComponentsTotal)
+				fmt.Fprintf(out, "Data dir:      %s\n", report.DataDir)
+			}
+			fmt.Fprintln(out, "")
+			fmt.Fprintln(out, "Tools:")
+			fmt.Fprintf(out, "  opencode:    %v\n", report.Tools.OpenCode)
+			fmt.Fprintf(out, "  git:         %v\n", report.Tools.Git)
+			fmt.Fprintf(out, "  go:          %v\n", report.Tools.Go)
+			fmt.Fprintf(out, "  plan-ai-mcp: %v\n", report.Tools.MCPBinary)
+
+			if report.StateValid {
+				fmt.Fprintln(out, "")
+				fmt.Fprintln(out, "OpenCode sync:")
+				fmt.Fprintf(out, "  Config path: %s\n", report.OpenCodeConfigPath)
+				fmt.Fprintf(out, "  Valid:       %v\n", report.OpenCodeValid)
+			}
+
 			return nil
 		},
 	}
 }
 
 func newInstallCommand() *cobra.Command {
-	return &cobra.Command{
+	var (
+		dryRun     bool
+		preset     string
+		components []string
+		allowReal  bool
+		binDir     string
+	)
+	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Install Plan-AI global persistence.",
+		Short: "Install Plan-AI globally.",
+		Long: `Install Plan-AI globally with component selection and presets.
+
+Presets:
+  full-plan-ai     All components (default)
+  ecosystem-only   MCP server, OpenCode agent, and documentation
+  minimal          MCP server only
+  custom           Select individual components with --component
+
+Components:
+  intent           Product Intent, discovery, and ambiguity analysis
+  planning         Master plans, specific plans, tasks, and phases
+  mcp              MCP server binary, protocol, tools, and registry
+  opencode-agent   OpenCode agent registration, profiles, prompts
+  docs             Installation docs, quickstart, integration guides
+  context          L0-L4 context generation and approved context
+  alignment        Alignment checks, validation, and confidence scoring`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, err := resolveHomeRoot()
-			if err != nil {
-				return err
-			}
+			// Backward-compatible: if --preset is set or --component is used, run the new installer
+			useNewInstaller := cmd.Flags().Changed("preset") || cmd.Flags().Changed("component") || dryRun
 
-			layout, err := store.EnsureGlobalLayout(home)
-			if err != nil {
-				return err
-			}
-
-			if _, err := os.Stat(layout.ConfigPath); os.IsNotExist(err) {
-				cfg := config.GlobalConfig{
-					Version:      configVersion,
-					InstalledAt:  nowUTC(),
-					GlobalDir:    layout.Dir,
-					GlobalDB:     layout.DBPath,
-					Integrations: map[string]any{},
-				}
-				if err := config.SaveGlobalConfig(layout.ConfigPath, cfg); err != nil {
+			if !useNewInstaller {
+				// Original behavior: global persistence setup
+				home, err := resolveHomeRoot()
+				if err != nil {
 					return err
 				}
-			} else if err != nil {
-				return err
+
+				layout, err := store.EnsureGlobalLayout(home)
+				if err != nil {
+					return err
+				}
+
+				if _, err := os.Stat(layout.ConfigPath); os.IsNotExist(err) {
+					cfg := config.GlobalConfig{
+						Version:      configVersion,
+						InstalledAt:  nowUTC(),
+						GlobalDir:    layout.Dir,
+						GlobalDB:     layout.DBPath,
+						Integrations: map[string]any{},
+					}
+					if err := config.SaveGlobalConfig(layout.ConfigPath, cfg); err != nil {
+						return err
+					}
+				} else if err != nil {
+					return err
+				}
+
+				db, err := store.Open(layout.DBPath)
+				if err != nil {
+					return err
+				}
+				defer db.Close()
+				if err := store.RunGlobalMigrations(db); err != nil {
+					return err
+				}
+
+				fmt.Fprintln(cmd.OutOrStdout(), "Global installation: installed")
+				fmt.Fprintf(cmd.OutOrStdout(), "Global dir: %s\n", layout.Dir)
+				fmt.Fprintf(cmd.OutOrStdout(), "Global db: %s\n", layout.DBPath)
+				return nil
 			}
 
-			db, err := store.Open(layout.DBPath)
+			// New installer logic
+			home, err := os.UserHomeDir()
 			if err != nil {
-				return err
-			}
-			defer db.Close()
-			if err := store.RunGlobalMigrations(db); err != nil {
-				return err
+				return fmt.Errorf("home dir: %w", err)
 			}
 
-			fmt.Fprintln(cmd.OutOrStdout(), "Global installation: installed")
-			fmt.Fprintf(cmd.OutOrStdout(), "Global dir: %s\n", layout.Dir)
-			fmt.Fprintf(cmd.OutOrStdout(), "Global db: %s\n", layout.DBPath)
+			if binDir == "" {
+				binDir = filepath.Join(home, ".local", "bin")
+			}
+
+			inst := installer.NewInstaller(home)
+
+			// Validate preset/components
+			if preset != "" && preset != "custom" {
+				if _, ok := installer.Presets[preset]; !ok {
+					return fmt.Errorf("unknown preset %q — valid: full-plan-ai, ecosystem-only, minimal, custom", preset)
+				}
+			}
+			if preset == "custom" && len(components) == 0 {
+				return fmt.Errorf("preset 'custom' requires at least one --component flag")
+			}
+			for _, c := range components {
+				valid := false
+				for _, ac := range installer.AllComponents {
+					if c == ac {
+						valid = true
+						break
+					}
+				}
+				if !valid {
+					return fmt.Errorf("unknown component %q — valid: %s", c, strings.Join(installer.AllComponents, ", "))
+				}
+			}
+			if preset == "" {
+				preset = "full-plan-ai"
+			}
+
+			if dryRun {
+				fmt.Fprintln(cmd.OutOrStdout(), "Dry-run mode — no changes will be made")
+				fmt.Fprintf(cmd.OutOrStdout(), "Preset: %s\n", preset)
+				if preset == "custom" {
+					fmt.Fprintf(cmd.OutOrStdout(), "Components: %s\n", strings.Join(components, ", "))
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Bin dir: %s\n", binDir)
+				fmt.Fprintf(cmd.OutOrStdout(), "State dir: %s\n", filepath.Join(home, ".plan-ai"))
+
+				comps := installer.Presets[preset]
+				if preset == "custom" {
+					comps = components
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Components to install:")
+				for _, c := range comps {
+					fmt.Fprintf(cmd.OutOrStdout(), "  - %s: %s\n", c, installer.ComponentDescriptions[c])
+				}
+
+				tools := inst.DetectTools()
+				fmt.Fprintln(cmd.OutOrStdout(), "\nTools detected:")
+				fmt.Fprintf(cmd.OutOrStdout(), "  opencode: %v\n", tools.OpenCode)
+				fmt.Fprintf(cmd.OutOrStdout(), "  git:      %v\n", tools.Git)
+				fmt.Fprintf(cmd.OutOrStdout(), "  go:       %v\n", tools.Go)
+				fmt.Fprintf(cmd.OutOrStdout(), "  mcp-srv:  %v\n", tools.MCPBinary)
+				return nil
+			}
+
+			if err := inst.Install(installer.InstallOptions{
+				Preset:     preset,
+				Components: components,
+				BinDir:     binDir,
+				AllowReal:  allowReal,
+			}); err != nil {
+				return fmt.Errorf("install: %w", err)
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), "Plan-AI installation complete.")
+			fmt.Fprintf(cmd.OutOrStdout(), "  State:    %s\n", filepath.Join(home, ".plan-ai", "state.json"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Preset:   %s\n", preset)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Bin dir:  %s\n", binDir)
+
+			_ = inst.LoadState()
+			installed := make([]string, 0)
+			for name, cs := range inst.State.Components {
+				if cs.Installed {
+					installed = append(installed, name)
+				}
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "  Installed: %s\n", strings.Join(installed, ", "))
+
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be installed without making changes")
+	cmd.Flags().StringVar(&preset, "preset", "", "Install preset: full-plan-ai, ecosystem-only, minimal, custom")
+	cmd.Flags().StringSliceVar(&components, "component", nil, "Component(s) to install (repeatable, requires --preset=custom)")
+	cmd.Flags().BoolVar(&allowReal, "allow-real-opencode", false, "Allow writing to real ~/.config/opencode")
+	cmd.Flags().StringVar(&binDir, "bin-dir", "", "Binary install directory (default: $HOME/.local/bin)")
+	return cmd
 }
 
 func newInitCommand() *cobra.Command {

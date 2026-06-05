@@ -35,6 +35,11 @@ fi
 BIN_DIR="$PREFIX/bin"
 DATA_DIR="${PLAN_AI_DATA_DIR:-${HOME}/.plan-ai}"
 
+# Try Gentle-AI uninstaller first (handles opencode config cleanup)
+if command -v "$BIN_DIR/plan-ai" >/dev/null 2>&1; then
+  "$BIN_DIR/plan-ai" uninstall 2>/dev/null || true
+fi
+
 for bin in "$BIN_DIR/plan-ai" "$BIN_DIR/plan-ai-mcp-server"; do
   if [[ -e "$bin" ]]; then
     rm -f "$bin"
