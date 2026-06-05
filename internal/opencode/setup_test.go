@@ -84,6 +84,44 @@ func TestSetupService_DetectsExistingConfig(t *testing.T) {
 	}
 }
 
+func TestSetupService_MergesPlanAIMCPIntoExistingConfig(t *testing.T) {
+	opencodeDir := t.TempDir()
+	projectRoot := t.TempDir()
+	existingPath := filepath.Join(opencodeDir, "opencode.json")
+	if err := os.WriteFile(existingPath, []byte(`{"agent_name":"custom-agent","mcp":{"existing":{"type":"local","command":["existing"]}}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := NewSetupService().Run(opencodeDir, projectRoot)
+	if err != nil {
+		t.Fatalf("SetupService.Run: %v", err)
+	}
+	if result.OpenCodeConfigPath != existingPath {
+		t.Fatalf("expected config path %q, got %q", existingPath, result.OpenCodeConfigPath)
+	}
+
+	data, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	if cfg["agent_name"] != "custom-agent" {
+		t.Fatalf("existing agent_name was overwritten: %v", cfg["agent_name"])
+	}
+	mcpMap := cfg["mcp"].(map[string]any)
+	if _, ok := mcpMap["existing"]; !ok {
+		t.Fatalf("existing mcp entry was removed: %#v", mcpMap)
+	}
+	planAI := mcpMap["plan-ai"].(map[string]any)
+	command := planAI["command"].([]any)
+	if command[0] != "plan-ai-mcp-server" {
+		t.Fatalf("plan-ai mcp command = %#v", command)
+	}
+}
+
 func TestSetupService_DetectsExistingJSONC(t *testing.T) {
 	opencodeDir := t.TempDir()
 	projectRoot := t.TempDir()
@@ -251,23 +289,71 @@ func TestSetupService_GeneratedMCPRegistryIsValid(t *testing.T) {
 		t.Fatalf("read mcp registry: %v", err)
 	}
 
-	var items []setupMCPItem
-	if err := json.Unmarshal(data, &items); err != nil {
+	var registry setupMCPRegistry
+	if err := json.Unmarshal(data, &registry); err != nil {
 		t.Fatalf("parse mcp registry: %v", err)
 	}
-	if len(items) == 0 {
+	if registry.Name != "plan-ai" {
+		t.Fatalf("registry name = %q", registry.Name)
+	}
+	if len(registry.Tools) == 0 {
 		t.Fatal("expected at least one MCP item")
 	}
 
 	found := false
-	for _, item := range items {
-		if item.Name == "plan_ai.status" {
+	for _, item := range registry.Tools {
+		if item.Name == "plan_ai.project_status" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatal("expected 'plan_ai.status' in MCP registry")
+		t.Fatal("expected 'plan_ai.project_status' in MCP registry")
+	}
+}
+
+func TestSetupService_GeneratedMCPRegistryUsesRealServerAndTools(t *testing.T) {
+	opencodeDir := t.TempDir()
+	projectRoot := t.TempDir()
+
+	svc := NewSetupService()
+	result, err := svc.Run(opencodeDir, projectRoot)
+	if err != nil {
+		t.Fatalf("SetupService.Run: %v", err)
+	}
+
+	data, err := os.ReadFile(result.MCPRegistryPath)
+	if err != nil {
+		t.Fatalf("read mcp registry: %v", err)
+	}
+
+	var registry map[string]any
+	if err := json.Unmarshal(data, &registry); err != nil {
+		t.Fatalf("parse mcp registry: %v", err)
+	}
+	if registry["name"] != "plan-ai" {
+		t.Fatalf("registry name = %v", registry["name"])
+	}
+	command, ok := registry["command"].([]any)
+	if !ok || len(command) == 0 || command[0] != "plan-ai-mcp-server" {
+		t.Fatalf("registry command = %#v", registry["command"])
+	}
+	tools, ok := registry["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		t.Fatalf("registry tools = %#v", registry["tools"])
+	}
+	seen := map[string]bool{}
+	for _, raw := range tools {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("tool item = %#v", raw)
+		}
+		seen[item["name"].(string)] = true
+	}
+	for _, want := range []string{"plan_ai.project_status", "plan_ai.create_master_plan", "plan_ai.agent_process", "plan_ai.create_product_intent"} {
+		if !seen[want] {
+			t.Fatalf("registry missing real MCP tool %q; seen=%v", want, seen)
+		}
 	}
 }
 

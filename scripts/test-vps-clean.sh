@@ -72,6 +72,35 @@ plan-ai alignment context --intent "$INTENT_ID"
 plan-ai alignment review --intent "$INTENT_ID" --outcome "Workshop CRM MVP" --plan "Build customers, vehicles, repair orders, and status tracking" --task "Create customer and vehicle schema"
 plan-ai alignment framework --intent "$INTENT_ID"
 plan-ai setup opencode
+DOCTOR_AFTER_SETUP_OUTPUT=$(plan-ai doctor)
+printf '%s\n' "$DOCTOR_AFTER_SETUP_OUTPUT"
+
+if [[ "$DOCTOR_AFTER_SETUP_OUTPUT" != *'Agent: plan-ai'* ]]; then
+  printf 'doctor did not detect the generated Plan-AI OpenCode agent\n' >&2
+  exit 1
+fi
+
+python3 - <<'PY'
+import json, os, pathlib, subprocess, sys
+
+registry = json.loads(pathlib.Path(os.environ["OPENCODE_CONFIG_DIR"], "mcp-registry.json").read_text())
+if registry.get("command", [None])[0] != "plan-ai-mcp-server":
+    raise SystemExit(f"unexpected MCP command: {registry.get('command')!r}")
+names = {tool.get("name") for tool in registry.get("tools", [])}
+for expected in ["plan_ai.project_status", "plan_ai.agent_process", "plan_ai.create_product_intent"]:
+    if expected not in names:
+        raise SystemExit(f"missing MCP tool {expected}")
+
+payload = json.dumps({"jsonrpc":"2.0","id":1,"method":"tools/list"}).encode()
+wire = b"Content-Length: " + str(len(payload)).encode() + b"\r\n\r\n" + payload
+proc = subprocess.run(["plan-ai-mcp-server"], input=wire, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+raw = proc.stdout.decode()
+header, body = raw.split("\r\n\r\n", 1)
+response = json.loads(body)
+tool_names = {tool["name"] for tool in response["result"]["tools"]}
+if "plan_ai.project_status" not in tool_names:
+    raise SystemExit("stdio MCP tools/list did not expose plan_ai.project_status")
+PY
 
 test -x "$PLAN_AI_INSTALL_PREFIX/bin/plan-ai"
 test -x "$PLAN_AI_INSTALL_PREFIX/bin/plan-ai-mcp-server"

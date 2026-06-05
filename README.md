@@ -32,7 +32,7 @@ Verify:
 
 ```bash
 plan-ai doctor
-plan-ai init
+plan-ai bootstrap
 plan-ai status
 ```
 
@@ -76,6 +76,7 @@ Full guide: [docs/quickstart.md](docs/quickstart.md).
 ```text
 plan-ai install        Install or migrate global persistence
 plan-ai init           Initialize project persistence
+plan-ai bootstrap      Install stores, initialize project, and wire OpenCode/MCP
 plan-ai status         Show store and project status
 plan-ai doctor         Check stores, migrations, and integrations
 plan-ai scan           Deterministic project scan
@@ -110,13 +111,13 @@ Runtime data is intentionally ignored by git. Do not commit `.plan-ai/`, SQLite 
 Safe sandbox mode:
 
 ```bash
-OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai setup opencode
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai bootstrap
 ```
 
 Real OpenCode config writes require explicit opt-in:
 
 ```bash
-plan-ai setup opencode --allow-real-opencode
+plan-ai bootstrap --allow-real-opencode
 ```
 
 Guide: [docs/opencode-integration.md](docs/opencode-integration.md).

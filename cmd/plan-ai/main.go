@@ -66,6 +66,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newVersionCommand(app))
 	cmd.AddCommand(newInstallCommand())
 	cmd.AddCommand(newInitCommand())
+	cmd.AddCommand(newBootstrapCommand())
 	cmd.AddCommand(newScanCommand())
 	cmd.AddCommand(newKnowledgeCommand())
 	cmd.AddCommand(newResearchCommand())
@@ -100,6 +101,98 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newAlignmentCommand())
 	cmd.AddCommand(newSetupCommand())
 
+	return cmd
+}
+
+func newBootstrapCommand() *cobra.Command {
+	var allowReal bool
+	cmd := &cobra.Command{
+		Use:   "bootstrap",
+		Short: "Install global storage, initialize the current project, and wire OpenCode/MCP artifacts.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
+			home, err := resolveHomeRoot()
+			if err != nil {
+				return err
+			}
+			projectRoot, err := resolveProjectRoot()
+			if err != nil {
+				return err
+			}
+
+			globalLayout, err := store.EnsureGlobalLayout(home)
+			if err != nil {
+				return err
+			}
+			if _, err := os.Stat(globalLayout.ConfigPath); os.IsNotExist(err) {
+				cfg := config.GlobalConfig{Version: configVersion, InstalledAt: nowUTC(), GlobalDir: globalLayout.Dir, GlobalDB: globalLayout.DBPath, Integrations: map[string]any{}}
+				if err := config.SaveGlobalConfig(globalLayout.ConfigPath, cfg); err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
+			globalDB, err := store.Open(globalLayout.DBPath)
+			if err != nil {
+				return err
+			}
+			defer globalDB.Close()
+			if err := store.RunGlobalMigrations(globalDB); err != nil {
+				return err
+			}
+			fmt.Fprintln(out, "Global installation: installed")
+			fmt.Fprintf(out, "Global dir: %s\n", globalLayout.Dir)
+			fmt.Fprintf(out, "Global db: %s\n", globalLayout.DBPath)
+
+			projectLayout, err := store.EnsureProjectLayout(projectRoot)
+			if err != nil {
+				return err
+			}
+			projectName := filepath.Base(projectRoot)
+			if _, err := os.Stat(projectLayout.ConfigPath); os.IsNotExist(err) {
+				cfg := config.ProjectConfig{Version: configVersion, ProjectName: projectName, ProjectRoot: projectRoot, ProjectDB: projectLayout.DBPath, CreatedAt: nowUTC(), Integrations: map[string]any{}}
+				if err := config.SaveProjectConfig(projectLayout.ConfigPath, cfg); err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
+			projectDB, err := store.Open(projectLayout.DBPath)
+			if err != nil {
+				return err
+			}
+			defer projectDB.Close()
+			if err := store.RunProjectMigrations(projectDB); err != nil {
+				return err
+			}
+			if err := store.UpsertProjectState(projectDB, store.ProjectID(projectRoot), projectName, projectRoot, "initialized"); err != nil {
+				return err
+			}
+			if err := store.UpsertKnownProject(globalDB, store.ProjectID(projectRoot), projectName, projectRoot); err != nil {
+				return err
+			}
+			fmt.Fprintln(out, "Project initialization: initialized")
+			fmt.Fprintf(out, "Project dir: %s\n", projectLayout.Dir)
+			fmt.Fprintf(out, "Project db: %s\n", projectLayout.DBPath)
+
+			opencodeDir, err := resolveOpenCodeConfigDirForWrite(allowReal)
+			if err != nil {
+				fmt.Fprintf(out, "OpenCode integration: skipped (%v)\n", err)
+				fmt.Fprintln(out, "Run `plan-ai setup opencode --allow-real-opencode` to write real OpenCode config.")
+				return nil
+			}
+			result, err := opencode.NewSetupService().Run(opencodeDir, projectRoot)
+			if err != nil {
+				return fmt.Errorf("setup opencode: %w", err)
+			}
+			fmt.Fprintln(out, "OpenCode integration artifacts generated.")
+			fmt.Fprintf(out, "  opencode config: %s\n", result.OpenCodeConfigPath)
+			fmt.Fprintf(out, "  mcp registry:    %s\n", result.MCPRegistryPath)
+			fmt.Fprintf(out, "  agent:           %s\n", result.AgentPath)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&allowReal, "allow-real-opencode", false, "allow writing to real ~/.config/opencode when OPENCODE_CONFIG_DIR is not set")
 	return cmd
 }
 

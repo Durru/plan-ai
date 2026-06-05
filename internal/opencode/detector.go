@@ -31,6 +31,14 @@ func (d *Detector) Detect(projectRoot string) *DetectionResult {
 		filepath.Join(projectRoot, ".opencode", "opencode.json"),
 		filepath.Join(projectRoot, ".opencode", "opencode.jsonc"),
 	}
+	if configDir := os.Getenv("OPENCODE_CONFIG_DIR"); configDir != "" {
+		locations = append(locations,
+			filepath.Join(configDir, "opencode.json"),
+			filepath.Join(configDir, "opencode.jsonc"),
+			filepath.Join(configDir, ".opencode", "opencode.json"),
+			filepath.Join(configDir, ".opencode", "opencode.jsonc"),
+		)
+	}
 
 	// Also check parent directory for workspace-level config
 	parent := filepath.Dir(projectRoot)

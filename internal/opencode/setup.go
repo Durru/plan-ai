@@ -26,13 +26,23 @@ type setupOpenCodeConfig struct {
 	Mode      string         `json:"mode"`
 	Skills    []string       `json:"skills"`
 	Agent     map[string]any `json:"agent,omitempty"`
+	MCP       map[string]any `json:"mcp,omitempty"`
 }
 
-// setupMCPItem mirrors RegistryItem for the setup registry artifact.
-type setupMCPItem struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	PlansBuilt  int    `json:"plans_built"`
+// setupMCPRegistry describes the real local MCP server registration.
+type setupMCPRegistry struct {
+	Name    string              `json:"name"`
+	Type    string              `json:"type"`
+	Enabled bool                `json:"enabled"`
+	Command []string            `json:"command"`
+	Env     map[string]string   `json:"env,omitempty"`
+	Tools   []setupMCPToolEntry `json:"tools"`
+}
+
+type setupMCPToolEntry struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"input_schema"`
 }
 
 // setupAgent describes the Plan-AI agent for OpenCode.
@@ -168,6 +178,9 @@ func (s *SetupService) ensureOpenCodeConfig(opencodeDir, projectRoot string) (st
 	}
 	for _, path := range candidates {
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			if err := s.mergePlanAIIntoOpenCodeConfig(path, projectRoot); err != nil {
+				return "", err
+			}
 			return path, nil
 		}
 	}
@@ -183,6 +196,16 @@ func (s *SetupService) ensureOpenCodeConfig(opencodeDir, projectRoot string) (st
 			"read_only":        true,
 			"auto_detect":      true,
 			"warn_on_conflict": true,
+		},
+		MCP: map[string]any{
+			"plan-ai": map[string]any{
+				"type":    "local",
+				"enabled": true,
+				"command": []string{"plan-ai-mcp-server"},
+				"env": map[string]string{
+					"PLAN_AI_PROJECT_ROOT": projectRoot,
+				},
+			},
 		},
 	}
 
@@ -202,14 +225,55 @@ func (s *SetupService) ensureOpenCodeConfig(opencodeDir, projectRoot string) (st
 	return configPath, nil
 }
 
+func (s *SetupService) mergePlanAIIntoOpenCodeConfig(path, projectRoot string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read existing opencode config: %w", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("parse existing opencode config: %w", err)
+	}
+	mcpRaw, ok := cfg["mcp"].(map[string]any)
+	if !ok || mcpRaw == nil {
+		mcpRaw = map[string]any{}
+	}
+	mcpRaw["plan-ai"] = map[string]any{
+		"type":    "local",
+		"enabled": true,
+		"command": []string{"plan-ai-mcp-server"},
+		"env": map[string]string{
+			"PLAN_AI_PROJECT_ROOT": projectRoot,
+		},
+	}
+	cfg["mcp"] = mcpRaw
+	if _, ok := cfg["agent_name"]; !ok {
+		cfg["agent_name"] = "plan-ai"
+	}
+	if _, ok := cfg["agent_role"]; !ok {
+		cfg["agent_role"] = "Planning assistant for AI-assisted projects"
+	}
+	if _, ok := cfg["skills"]; !ok {
+		cfg["skills"] = []string{"planning", "research", "vision", "knowledge", "scanning"}
+	}
+	merged, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal merged opencode config: %w", err)
+	}
+	if err := os.WriteFile(path, merged, 0644); err != nil {
+		return fmt.Errorf("write merged opencode config: %w", err)
+	}
+	return nil
+}
+
 // writeMCPRegistry writes a Plan-AI MCP tool registry artifact.
 func (s *SetupService) writeMCPRegistry(opencodeDir string) (string, error) {
-	items := []setupMCPItem{
-		{Name: "plan_ai.status", Description: "Get Plan-AI status and domain counts", PlansBuilt: 0},
-		{Name: "plan_ai.scan", Description: "Scan the project for structure and dependencies", PlansBuilt: 0},
-		{Name: "plan_ai.plan", Description: "Create planning artifacts from vision and approved context", PlansBuilt: 0},
-		{Name: "plan_ai.research", Description: "Manage research entries and findings", PlansBuilt: 0},
-		{Name: "plan_ai.knowledge", Description: "Query reusable knowledge base", PlansBuilt: 0},
+	registry := setupMCPRegistry{
+		Name:    "plan-ai",
+		Type:    "local",
+		Enabled: true,
+		Command: []string{"plan-ai-mcp-server"},
+		Tools:   defaultMCPToolEntries(),
 	}
 
 	path := filepath.Join(opencodeDir, "mcp-registry.json")
@@ -217,7 +281,7 @@ func (s *SetupService) writeMCPRegistry(opencodeDir string) (string, error) {
 		return "", fmt.Errorf("mkdir mcp registry dir: %w", err)
 	}
 
-	data, err := json.MarshalIndent(items, "", "  ")
+	data, err := json.MarshalIndent(registry, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("marshal mcp registry: %w", err)
 	}
@@ -226,6 +290,50 @@ func (s *SetupService) writeMCPRegistry(opencodeDir string) (string, error) {
 	}
 
 	return path, nil
+}
+
+func defaultMCPToolEntries() []setupMCPToolEntry {
+	input := map[string]any{"type": "object"}
+	return []setupMCPToolEntry{
+		{Name: "plan_ai.init_project", Description: "Initialize Plan-AI for a project at the given root path.", InputSchema: input},
+		{Name: "plan_ai.project_status", Description: "Get the current status of a Plan-AI project.", InputSchema: input},
+		{Name: "plan_ai.create_master_plan", Description: "Create a new master plan from approved context.", InputSchema: input},
+		{Name: "plan_ai.create_specific_plan", Description: "Create a specific plan under a master plan.", InputSchema: input},
+		{Name: "plan_ai.research_topic", Description: "Create a new research entry for a topic.", InputSchema: input},
+		{Name: "plan_ai.approve_plan", Description: "Approve a plan by ID.", InputSchema: input},
+		{Name: "plan_ai.reject_plan", Description: "Reject a plan by ID.", InputSchema: input},
+		{Name: "plan_ai.analyze_impact", Description: "Analyze the impact of a change event.", InputSchema: input},
+		{Name: "plan_ai.get_next_task", Description: "Get the next pending task from the current plan.", InputSchema: input},
+		{Name: "plan_ai.mark_task_done", Description: "Mark a task as completed.", InputSchema: input},
+		{Name: "plan_ai.create_snapshot", Description: "Create a project state snapshot.", InputSchema: input},
+		{Name: "plan_ai.list_plans", Description: "List all plans in the project.", InputSchema: input},
+		{Name: "plan_ai.list_tasks", Description: "List all tasks, optionally filtered by plan, phase, or status.", InputSchema: input},
+		{Name: "plan_ai.agent_process", Description: "Process a user message through the agent system for intent detection, routing, and delegation.", InputSchema: input},
+		{Name: "plan_ai.agent_message", Description: "Process a user message through the agent system.", InputSchema: input},
+		{Name: "plan_ai.agent_runs", Description: "List recent agent runs for a project.", InputSchema: input},
+		{Name: "plan_ai.agent_status", Description: "Get recent agent activity and status.", InputSchema: input},
+		{Name: "plan_ai.continuous_status", Description: "Get continuous planning status for a project.", InputSchema: input},
+		{Name: "plan_ai.continuous_events", Description: "List recent continuous planning events.", InputSchema: input},
+		{Name: "plan_ai.continuous_proposals", Description: "List plan update proposals.", InputSchema: input},
+		{Name: "plan_ai.propose_plan_update", Description: "Create or list plan update proposals for continuous planning.", InputSchema: input},
+		{Name: "plan_ai.approve_plan_update", Description: "Approve a pending plan update proposal.", InputSchema: input},
+		{Name: "plan_ai.reject_plan_update", Description: "Reject a pending plan update proposal.", InputSchema: input},
+		{Name: "plan_ai.continuous_context", Description: "Generate context at a specified level for a project.", InputSchema: input},
+		{Name: "plan_ai.get_context_level", Description: "Generate context at a specified L0-L4 level for a project.", InputSchema: input},
+		{Name: "plan_ai.get_context", Description: "Get context at a specified level (L0-L4) for a project.", InputSchema: input},
+		{Name: "plan_ai.detect_changes", Description: "Detect and register changes in the project, returning impact analysis.", InputSchema: input},
+		{Name: "plan_ai.update_plan", Description: "Update an existing plan's details (title, summary, status).", InputSchema: input},
+		{Name: "plan_ai.rollback_snapshot", Description: "Rollback to a previous project state snapshot (not yet implemented).", InputSchema: input},
+		{Name: "plan_ai.export_docs", Description: "Export project documentation (plans, decisions, research).", InputSchema: input},
+		{Name: "plan_ai.create_product_intent", Description: "Create a Product Intent (Phase 51).", InputSchema: input},
+		{Name: "plan_ai.list_product_intents", Description: "List all product intents for the project.", InputSchema: input},
+		{Name: "plan_ai.get_product_intent", Description: "Get a single product intent by ID.", InputSchema: input},
+		{Name: "plan_ai.submit_product_intent", Description: "Submit a product intent for approval.", InputSchema: input},
+		{Name: "plan_ai.approve_product_intent", Description: "Approve a product intent.", InputSchema: input},
+		{Name: "plan_ai.reject_product_intent", Description: "Reject a product intent.", InputSchema: input},
+		{Name: "plan_ai.discover_intent", Description: "Analyze raw user input to extract structured intent, objectives, restrictions, and questions.", InputSchema: input},
+		{Name: "plan_ai.list_discovery_results", Description: "List discovery results for the project.", InputSchema: input},
+	}
 }
 
 // writeAgentRegistration writes a Plan-AI agent descriptor.

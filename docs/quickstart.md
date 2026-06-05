@@ -6,10 +6,12 @@ This guide starts from a fresh checkout and creates a local Plan-AI project stor
 git clone https://github.com/Durru/plan-ai.git
 cd plan-ai
 bash scripts/install.sh
+plan-ai bootstrap
 plan-ai doctor
-plan-ai init
 plan-ai status
 ```
+
+`bootstrap` creates/migrates the global store, initializes the current project, and writes OpenCode/MCP artifacts when `OPENCODE_CONFIG_DIR` is set or `--allow-real-opencode` is passed.
 
 ## Create planning context
 

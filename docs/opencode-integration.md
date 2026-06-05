@@ -9,7 +9,7 @@ The integration is safe by default: it does **not** write to a real OpenCode con
 Recommended for tests and validation:
 
 ```bash
-OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai setup opencode
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai bootstrap
 ```
 
 Generated artifacts:
@@ -27,7 +27,27 @@ Generated artifacts:
 Only use this when you intentionally want to update the real OpenCode config area:
 
 ```bash
+plan-ai bootstrap --allow-real-opencode
+```
+
+If the project is already initialized and you only want to regenerate integration artifacts, use:
+
+```bash
 plan-ai setup opencode --allow-real-opencode
+```
+
+The generated `opencode.json` includes a local MCP entry:
+
+```json
+{
+  "mcp": {
+    "plan-ai": {
+      "type": "local",
+      "enabled": true,
+      "command": ["plan-ai-mcp-server"]
+    }
+  }
+}
 ```
 
 If `OPENCODE_CONFIG_DIR` is not set and `--allow-real-opencode` is not passed, the command exits with an error. This protects `~/.config/opencode` from accidental test writes.
@@ -54,7 +74,7 @@ Relevant packages:
 
 - `internal/opencode/` — detection, config, registry, doctor checks, artifact generation.
 - `internal/mcp/` — MCP tool definitions and handlers.
-- `cmd/mcp-server/` — stdio MCP server entry point.
+- `cmd/mcp-server/` — stdio MCP server entry point (`plan-ai-mcp-server`).
 
 ## Safety rules
 

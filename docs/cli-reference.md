@@ -36,6 +36,15 @@ Create or migrate project persistence.
 plan-ai init
 ```
 
+### `plan-ai bootstrap`
+
+Install/migrate global persistence, initialize the current project, and generate OpenCode/MCP artifacts.
+
+```bash
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai bootstrap
+plan-ai bootstrap --allow-real-opencode
+```
+
 Registers the current project and creates `<project>/.plan-ai/project.db`.
 
 ### `plan-ai status`

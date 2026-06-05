@@ -73,8 +73,20 @@ PLAN_AI_SKIP_INIT=1 bash scripts/install.sh
 
 ```bash
 plan-ai doctor
-plan-ai init
+plan-ai bootstrap
 plan-ai status
+```
+
+For real OpenCode integration, run from the project you want Plan-AI to manage:
+
+```bash
+plan-ai bootstrap --allow-real-opencode
+```
+
+For sandbox validation, keep OpenCode writes isolated:
+
+```bash
+OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai bootstrap
 ```
 
 ## Uninstall

@@ -111,6 +111,71 @@ func TestStatusCommandReportsGlobalAndProjectRoutes(t *testing.T) {
 	}
 }
 
+func TestDoctorDetectsSandboxOpenCodeConfigAfterSetup(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	opencodeDir := t.TempDir()
+	env := map[string]string{"HOME": home, "OPENCODE_CONFIG_DIR": opencodeDir}
+
+	if output, err := executeCommandWithEnv(t, env, project, "install"); err != nil {
+		t.Fatalf("install: %v\n%s", err, output)
+	}
+	if output, err := executeCommandWithEnv(t, env, project, "init"); err != nil {
+		t.Fatalf("init: %v\n%s", err, output)
+	}
+	if output, err := executeCommandWithEnv(t, env, project, "setup", "opencode"); err != nil {
+		t.Fatalf("setup opencode: %v\n%s", err, output)
+	}
+
+	output, err := executeCommandWithEnv(t, env, project, "doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v\n%s", err, output)
+	}
+	for _, want := range []string{
+		"Config found: " + filepath.Join(opencodeDir, "opencode.json"),
+		"Agent: plan-ai",
+		"[pass] OpenCode config detected, Plan-AI integration version compatible",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestBootstrapInitializesProjectAndOpenCodeIntegration(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	opencodeDir := t.TempDir()
+	env := map[string]string{"HOME": home, "OPENCODE_CONFIG_DIR": opencodeDir}
+
+	output, err := executeCommandWithEnv(t, env, project, "bootstrap")
+	if err != nil {
+		t.Fatalf("bootstrap: %v\n%s", err, output)
+	}
+	for _, want := range []string{
+		"Global installation: installed",
+		"Project initialization: initialized",
+		"OpenCode integration artifacts generated.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("bootstrap output missing %q:\n%s", want, output)
+		}
+	}
+	assertPathExists(t, filepath.Join(home, ".plan-ai", "global.db"))
+	assertPathExists(t, filepath.Join(project, ".plan-ai", "project.db"))
+	assertPathExists(t, filepath.Join(opencodeDir, "opencode.json"))
+	assertPathExists(t, filepath.Join(opencodeDir, "mcp-registry.json"))
+	assertPathExists(t, filepath.Join(opencodeDir, "agents", "plan-ai.json"))
+
+	doctorOutput, err := executeCommandWithEnv(t, env, project, "doctor")
+	if err != nil {
+		t.Fatalf("doctor after bootstrap: %v\n%s", err, doctorOutput)
+	}
+	if !strings.Contains(doctorOutput, "Agent: plan-ai") {
+		t.Fatalf("doctor should detect plan-ai agent after bootstrap:\n%s", doctorOutput)
+	}
+}
+
 func TestStatusCommandReportsEmptyDomainCountsForInitializedProject(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
