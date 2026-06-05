@@ -16,8 +16,10 @@ func main() {
 }
 
 func run() error {
+	minimal := os.Getenv("PLAN_AI_MCP_MINIMAL") == "true"
+
 	if len(os.Args) < 2 {
-		return serveStdio()
+		return serveStdio(minimal)
 	}
 
 	ctx := mcp.ToolContext{}
@@ -64,15 +66,44 @@ func run() error {
 
 	switch os.Args[1] {
 	case "stdio", "serve":
-		return serveStdio()
+		return serveStdio(minimal)
 
 	case "list-tools":
+		if minimal {
+			s.SetMinimalMode(true)
+		}
 		tools := s.ListTools()
 		data, _ := json.MarshalIndent(tools, "", "  ")
 		fmt.Println(string(data))
 		return nil
 
+	case "validate-tools":
+		tools := s.ListTools()
+		allValid, results := mcp.ValidateAllTools(tools)
+		for _, r := range results {
+			if !r.Valid {
+				fmt.Printf("FAIL  %s\n", r.Name)
+				for _, issue := range r.Issues {
+					fmt.Printf("       - %s\n", issue)
+				}
+			} else {
+				fmt.Printf("OK    %s\n", r.Name)
+				for _, w := range r.Warnings {
+					fmt.Printf("       warn: %s\n", w)
+				}
+			}
+		}
+		if allValid {
+			fmt.Println("VALIDATE_TOOLS_OK")
+		} else {
+			return fmt.Errorf("VALIDATE_TOOLS_FAIL")
+		}
+		return nil
+
 	case "call-tool":
+		if minimal {
+			s.SetMinimalMode(true)
+		}
 		if len(os.Args) < 3 {
 			return fmt.Errorf("usage: mcp-server call-tool <tool-name> [json-args]")
 		}
@@ -89,13 +120,16 @@ func run() error {
 		return nil
 
 	default:
-		return fmt.Errorf("unknown command: %s (use list-tools or call-tool)", os.Args[1])
+		return fmt.Errorf("unknown command: %s (use list-tools, call-tool, or validate-tools)", os.Args[1])
 	}
 }
 
-func serveStdio() error {
+func serveStdio(minimal bool) error {
 	ctx := mcp.ToolContext{}
 	s := mcp.NewServer(ctx)
+	if minimal {
+		s.SetMinimalMode(true)
+	}
 	deps := defaultToolDependencies()
 	if err := mcp.RegisterDefaultTools(s, &deps); err != nil {
 		return fmt.Errorf("register tools: %w", err)

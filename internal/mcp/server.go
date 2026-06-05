@@ -8,12 +8,23 @@ import (
 	"time"
 )
 
+// MinimalToolNames is the set of tools exposed when PLAN_AI_MCP_MINIMAL=true.
+var MinimalToolNames = map[string]bool{
+	"plan_ai.project_status":        true,
+	"plan_ai.discover_intent":       true,
+	"plan_ai.create_product_intent": true,
+	"plan_ai.list_product_intents":  true,
+	"plan_ai.get_context":           true,
+	"plan_ai.get_next_task":         true,
+}
+
 // Server is the MCP tool registry and execution engine.
 type Server struct {
-	mu      sync.RWMutex
-	tools   map[string]ToolDefinition
-	records []RunRecord
-	ctx     ToolContext
+	mu          sync.RWMutex
+	tools       map[string]ToolDefinition
+	records     []RunRecord
+	ctx         ToolContext
+	minimalMode bool
 }
 
 // NewServer creates an MCP server with the given tool context.
@@ -47,12 +58,24 @@ func (s *Server) GetTool(name string) (ToolDefinition, bool) {
 	return td, ok
 }
 
+// SetMinimalMode enables or disables minimal tool mode.
+// In minimal mode, only tools listed in MinimalToolNames are exposed.
+func (s *Server) SetMinimalMode(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.minimalMode = v
+}
+
 // ListTools returns all registered tool definitions sorted by name.
+// If minimal mode is enabled, only the minimal tool set is returned.
 func (s *Server) ListTools() []ToolDefinition {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]ToolDefinition, 0, len(s.tools))
 	for _, td := range s.tools {
+		if s.minimalMode && !MinimalToolNames[td.Name] {
+			continue
+		}
 		out = append(out, td)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

@@ -110,6 +110,7 @@ func syncOpenCodeConfig(ocDir, binDir string) error {
 		"command": []string{mcpCmd},
 		"env": map[string]string{
 			"PLAN_AI_PROJECT_ROOT": projectRoot,
+			"PLAN_AI_MCP_MINIMAL":  "true",
 		},
 	}
 

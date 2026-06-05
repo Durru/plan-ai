@@ -440,6 +440,203 @@ func TestValidateArgs(t *testing.T) {
 	}
 }
 
+func TestServer_MinimalMode(t *testing.T) {
+	s := NewServer(ToolContext{})
+	// Register a full tool and a minimal tool
+	s.RegisterTool(ToolDefinition{
+		Name:        "plan_ai.full_tool",
+		Description: "A full tool not in minimal set",
+		Schema:      JSONSchema{Type: "object"},
+		Handler:     func(args map[string]any) (*ToolResult, error) { return &ToolResult{Success: true}, nil },
+	})
+	s.RegisterTool(ToolDefinition{
+		Name:        "plan_ai.project_status",
+		Description: "Get project status",
+		Schema:      JSONSchema{Type: "object"},
+		Handler:     func(args map[string]any) (*ToolResult, error) { return &ToolResult{Success: true}, nil },
+	})
+	s.RegisterTool(ToolDefinition{
+		Name:        "plan_ai.get_context",
+		Description: "Get context",
+		Schema:      JSONSchema{Type: "object"},
+		Handler:     func(args map[string]any) (*ToolResult, error) { return &ToolResult{Success: true}, nil },
+	})
+
+	// Without minimal mode — all 3 tools
+	all := s.ListTools()
+	if len(all) != 3 {
+		t.Fatalf("expected 3 tools without minimal mode, got %d", len(all))
+	}
+
+	// With minimal mode — only minimal tools
+	s.SetMinimalMode(true)
+	minimal := s.ListTools()
+	if len(minimal) != 2 {
+		t.Fatalf("expected 2 minimal tools, got %d: %v", len(minimal), toolNames(minimal))
+	}
+	// Verify only minimal tools returned
+	for _, td := range minimal {
+		if !MinimalToolNames[td.Name] {
+			t.Fatalf("non-minimal tool %q returned in minimal mode", td.Name)
+		}
+	}
+
+	// ExecuteTool still works for all tools regardless of mode
+	result := s.ExecuteTool("plan_ai.full_tool", nil)
+	if !result.Success {
+		t.Fatalf("ExecuteTool should work for non-minimal tool in minimal mode: %s", result.Error)
+	}
+}
+
+func toolNames(tools []ToolDefinition) []string {
+	names := make([]string, len(tools))
+	for i, td := range tools {
+		names[i] = td.Name
+	}
+	return names
+}
+
+func TestValidateTools(t *testing.T) {
+	tools := []ToolDefinition{
+		{
+			Name:        "plan_ai.valid_tool",
+			Description: "A valid tool",
+			Schema:      JSONSchema{Type: "object", Properties: map[string]Property{}},
+		},
+		{
+			Name:        "plan_ai.missing_description",
+			Description: "",
+			Schema:      JSONSchema{Type: "object"},
+		},
+		{
+			Name:        "",
+			Description: "Empty name",
+			Schema:      JSONSchema{Type: "object"},
+		},
+		{
+			Name:        "plan_ai.bad_schema_type",
+			Description: "Schema without type",
+			Schema:      JSONSchema{Type: ""},
+		},
+		{
+			Name:        "plan_ai.duplicate",
+			Description: "First duplicate",
+			Schema:      JSONSchema{Type: "object"},
+		},
+		{
+			Name:        "plan_ai.duplicate",
+			Description: "Second duplicate",
+			Schema:      JSONSchema{Type: "object"},
+		},
+	}
+
+	results := ValidateTools(tools)
+	if len(results) != len(tools) {
+		t.Fatalf("expected %d results, got %d", len(tools), len(results))
+	}
+
+	// valid_tool should be valid
+	for _, r := range results {
+		if r.Name == "plan_ai.valid_tool" && !r.Valid {
+			t.Fatalf("valid_tool should be valid: %v", r.Issues)
+		}
+	}
+
+	// missing_description should be invalid
+	found := false
+	for _, r := range results {
+		if r.Name == "plan_ai.missing_description" && !r.Valid {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("missing_description should be invalid")
+	}
+
+	// empty name should be invalid
+	found = false
+	for _, r := range results {
+		if r.Name == "" && !r.Valid {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("empty name should be invalid")
+	}
+
+	// duplicates should be invalid
+	count := 0
+	for _, r := range results {
+		if r.Name == "plan_ai.duplicate" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 duplicate results, got %d", count)
+	}
+
+	// ValidateAllTools should return false
+	allValid, _ := ValidateAllTools(tools)
+	if allValid {
+		t.Fatal("ValidateAllTools should return false for invalid tools")
+	}
+}
+
+func TestValidateTools_AllValid(t *testing.T) {
+	s := NewServer(ToolContext{})
+	deps := &ToolDependencies{
+		InitProject:         func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ProjectStatus:       func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		CreateMasterPlan:    func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		CreateSpecificPlan:  func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ResearchTopic:       func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ApprovePlan:         func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		RejectPlan:          func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		AnalyzeImpact:       func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		GetNextTask:         func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		MarkTaskDone:        func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		CreateSnapshot:      func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ListPlans:           func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ListTasks:           func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		AgentProcess:        func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		AgentRuns:           func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ContinuousStatus:    func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ContinuousEvents:    func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ContinuousProposals: func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ContinuousContext:   func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		GetContext:          func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		DetectChanges:       func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		UpdatePlan:          func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		RollbackSnapshot:    func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ExportDocs:          func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		CreateProductIntent: func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ListProductIntents:  func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		GetProductIntent:    func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		SubmitProductIntent: func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ApproveProductIntent: func(args map[string]any) (map[string]any, error) {
+			return map[string]any{}, nil
+		},
+		RejectProductIntent: func(args map[string]any) (map[string]any, error) {
+			return map[string]any{}, nil
+		},
+		DiscoverIntent:       func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+		ListDiscoveryResults: func(args map[string]any) (map[string]any, error) { return map[string]any{}, nil },
+	}
+	RegisterDefaultTools(s, deps)
+
+	allValid, results := ValidateAllTools(s.ListTools())
+	if !allValid {
+		t.Errorf("all registered tools should be valid, got failures:")
+		for _, r := range results {
+			if !r.Valid {
+				t.Errorf("  %s: %v", r.Name, r.Issues)
+			}
+		}
+	}
+}
+
 func TestValidateArgs_Enum(t *testing.T) {
 	schema := JSONSchema{
 		Type: "object",
