@@ -7,13 +7,13 @@ package installer
 
 // Component names used throughout the installer.
 const (
-	CompIntent       = "intent"
-	CompPlanning     = "planning"
-	CompMCP          = "mcp"
-	CompOpenCode     = "opencode-agent"
-	CompDocs         = "docs"
-	CompContext      = "context"
-	CompAlignment    = "alignment"
+	CompIntent    = "intent"
+	CompPlanning  = "planning"
+	CompMCP       = "mcp"
+	CompOpenCode  = "opencode-agent"
+	CompDocs      = "docs"
+	CompContext   = "context"
+	CompAlignment = "alignment"
 )
 
 // AllComponents is the canonical list of all installable components.
@@ -39,14 +39,14 @@ var ComponentDescriptions = map[string]string{
 
 // State tracks what is installed globally.
 type State struct {
-	Version     string                   `json:"version"`
-	InstalledAt string                   `json:"installed_at"`
-	UpdatedAt   string                   `json:"updated_at"`
+	Version     string                    `json:"version"`
+	InstalledAt string                    `json:"installed_at"`
+	UpdatedAt   string                    `json:"updated_at"`
 	Components  map[string]ComponentState `json:"components"`
-	Preset      string                   `json:"preset"`
-	BinDir      string                   `json:"bin_dir"`
-	DataDir     string                   `json:"data_dir"`
-	Tools       ToolsDetected            `json:"tools_detected"`
+	Preset      string                    `json:"preset"`
+	BinDir      string                    `json:"bin_dir"`
+	DataDir     string                    `json:"data_dir"`
+	Tools       ToolsDetected             `json:"tools_detected"`
 }
 
 // ComponentState tracks whether a single component is installed.
@@ -74,16 +74,16 @@ type InstallOptions struct {
 
 // DoctorReport is the result of a doctor check.
 type DoctorReport struct {
-	StateExists          bool
-	StateValid           bool
-	Tools                ToolsDetected
-	ComponentsInstalled  int
-	ComponentsTotal      int
-	OpenCodeValid        bool
-	OpenCodeConfigPath   string
-	DataDir              string
-	BinDir               string
-	Preset               string
-	GlobalDBExists       bool
-	ProjectDBExists      bool
+	StateExists         bool
+	StateValid          bool
+	Tools               ToolsDetected
+	ComponentsInstalled int
+	ComponentsTotal     int
+	OpenCodeValid       bool
+	OpenCodeConfigPath  string
+	DataDir             string
+	BinDir              string
+	Preset              string
+	GlobalDBExists      bool
+	ProjectDBExists     bool
 }

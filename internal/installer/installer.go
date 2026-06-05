@@ -306,7 +306,7 @@ func (inst *Installer) Doctor() *DoctorReport {
 		}
 	}
 
-	// Check OpenCode
+	// Check OpenCode — must have mcp.plan-ai specifically
 	ocDir := openCodeConfigDir()
 	if ocDir != "" {
 		candidates := []string{
@@ -314,13 +314,10 @@ func (inst *Installer) Doctor() *DoctorReport {
 			filepath.Join(ocDir, "opencode.jsonc"),
 		}
 		for _, path := range candidates {
-			if data, err := os.ReadFile(path); err == nil {
+			if _, err := os.Stat(path); err == nil {
 				r.OpenCodeConfigPath = path
-				var raw map[string]any
-				if err := json.Unmarshal(data, &raw); err == nil {
-					if _, ok := raw["mcp"]; ok {
-						r.OpenCodeValid = true
-					}
+				if hasMCPPlanAI(path) {
+					r.OpenCodeValid = true
 				}
 				break
 			}

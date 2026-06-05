@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,9 +150,9 @@ func TestInstaller_DryRunDoesNotCreateState(t *testing.T) {
 	inst, home := testInstaller(t)
 
 	err := inst.Install(InstallOptions{
-		DryRun:  true,
-		Preset:  "full-plan-ai",
-		BinDir:  filepath.Join(home, "bin"),
+		DryRun: true,
+		Preset: "full-plan-ai",
+		BinDir: filepath.Join(home, "bin"),
 	})
 	if err != nil {
 		t.Fatalf("Install dry-run: %v", err)
@@ -599,12 +600,169 @@ func TestInstaller_ValidatesOpenCodeConfigAfterInstall(t *testing.T) {
 		t.Fatalf("read opencode config: %v", err)
 	}
 
-	if !strings.Contains(string(data), `"mcp"`) {
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse opencode config: %v", err)
+	}
+
+	// Must have $schema
+	if _, ok := cfg["$schema"]; !ok {
+		t.Fatal("opencode config should have $schema")
+	}
+
+	// Must have mcp.plan-ai
+	mcpRaw, ok := cfg["mcp"]
+	if !ok {
 		t.Fatal("opencode config should have mcp section")
+	}
+	mcpSection, ok := mcpRaw.(map[string]any)
+	if !ok {
+		t.Fatal("mcp section should be an object")
+	}
+	if _, ok := mcpSection["plan-ai"]; !ok {
+		t.Fatal("opencode config should have mcp.plan-ai entry")
 	}
 
 	report := inst.Doctor()
 	if !report.OpenCodeValid {
 		t.Error("OpenCode config should be valid after install")
+	}
+}
+
+// ── stripe invalid keys ────────────────────────────────
+
+func TestInstaller_StripsInvalidKeysFromOpenCodeConfig(t *testing.T) {
+	inst, home := testInstaller(t)
+
+	ocDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(ocDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a config with invalid keys + some valid keys
+	cfgPath := filepath.Join(ocDir, "opencode.json")
+	origContent := `{"agent_name":"my-app","providers":{"test":1},"app.agents":{"plan-ai":{}},"mcp":{"existing":{"type":"local"}}}`
+	if err := os.WriteFile(cfgPath, []byte(origContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("OPENCODE_CONFIG_DIR", ocDir)
+
+	err := inst.Install(InstallOptions{
+		Preset:    "minimal",
+		BinDir:    filepath.Join(home, "bin"),
+		AllowReal: true,
+	})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	// Read back and verify
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read opencode config: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse opencode config: %v", err)
+	}
+
+	// Invalid keys must be gone
+	for key := range invalidOpenCodeKeys {
+		if _, exists := cfg[key]; exists {
+			t.Errorf("invalid key %q should have been stripped", key)
+		}
+	}
+
+	// Valid keys must survive
+	if cfg["agent_name"] != "my-app" {
+		t.Errorf("agent_name was altered: got %v", cfg["agent_name"])
+	}
+
+	// $schema must be present
+	if _, ok := cfg["$schema"]; !ok {
+		t.Fatal("$schema should be added")
+	}
+
+	// mcp.plan-ai must be present
+	mcpRaw, ok := cfg["mcp"].(map[string]any)
+	if !ok {
+		t.Fatal("mcp section should exist")
+	}
+	if _, ok := mcpRaw["existing"]; !ok {
+		t.Fatal("existing mcp entry was removed")
+	}
+	if _, ok := mcpRaw["plan-ai"]; !ok {
+		t.Fatal("plan-ai mcp entry should be present")
+	}
+
+	// Verify doctor reports valid
+	report := inst.Doctor()
+	if !report.OpenCodeValid {
+		t.Error("OpenCode config should be valid after install")
+	}
+}
+
+// ── schema + mcp.plan-ai validation ────────────────────
+
+func TestInstaller_OpenCodeConfigHasSchemaAndMCPPlanAI(t *testing.T) {
+	inst, home := testInstaller(t)
+
+	// Use HOME temp so we don't touch real ~/.config/opencode
+	ocDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(ocDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPENCODE_CONFIG_DIR", ocDir)
+
+	// Install minimal preset
+	err := inst.Install(InstallOptions{
+		Preset:    "minimal",
+		BinDir:    filepath.Join(home, "bin"),
+		AllowReal: true,
+	})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	// Read generated config
+	cfgPath := filepath.Join(ocDir, "opencode.json")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read opencode config: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse opencode config: %v\n%s", err, string(data))
+	}
+
+	// Verify $schema
+	schema, ok := cfg["$schema"]
+	if !ok {
+		t.Fatal("generated config missing $schema")
+	}
+	if schema != opencodeSchemaURL {
+		t.Fatalf("$schema = %q, want %q", schema, opencodeSchemaURL)
+	}
+
+	// Verify mcp.plan-ai
+	mcpRaw, ok := cfg["mcp"].(map[string]any)
+	if !ok {
+		t.Fatal("generated config missing mcp section")
+	}
+	planAI, ok := mcpRaw["plan-ai"].(map[string]any)
+	if !ok {
+		t.Fatal("generated config missing mcp.plan-ai")
+	}
+	if planAI["type"] != "local" {
+		t.Fatalf("plan-ai type = %v, want 'local'", planAI["type"])
+	}
+
+	// Verify doctor
+	report := inst.Doctor()
+	if !report.OpenCodeValid {
+		t.Error("Doctor should report OpenCodeValid=true")
 	}
 }
