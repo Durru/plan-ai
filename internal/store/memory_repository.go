@@ -72,6 +72,29 @@ func (r *MemoryRepository) Update(e memory.Entry) (memory.Entry, error) {
 	return e, nil
 }
 
+// SearchMemories searches project memory entries using FTS5-ranked
+// full-text search. It sanitizes the query to prevent FTS5 syntax
+// errors from special characters. An empty query returns List().
+func (r *MemoryRepository) SearchMemories(projectID string, query string, limit int) ([]memory.Entry, error) {
+	safe := sanitizeFTS5(query)
+	if safe == "" {
+		return r.List(projectID)
+	}
+	rows, err := r.db.Query(`
+		SELECT m.id, m.project_id, m.entry_type, m.title, m.question, m.answer,
+		       m.content, m.citation, m.source, m.status, m.created_at, m.updated_at
+		FROM project_memory_v2 m
+		JOIN project_memory_v2_fts fts ON m.rowid = fts.rowid
+		WHERE m.project_id = ? AND project_memory_v2_fts MATCH ?
+		ORDER BY rank
+		LIMIT ?`, projectID, safe, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMemoryEntries(rows)
+}
+
 // ──────────────────────────────────────────────
 // Scanning helpers
 // ──────────────────────────────────────────────

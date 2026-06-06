@@ -40,7 +40,7 @@ cat > "$HOME/.config/opencode/opencode.json" <<'EOF'
   "mcp": {
     "plan-ai": {
       "type": "local",
-      "command": ["plan-ai-mcp-server"],
+      "command": ["plan-ai", "mcp", "serve"],
       "enabled": true,
       "env": {
         "PLAN_AI_PROJECT_ROOT": "/tmp",
@@ -53,10 +53,10 @@ EOF
 
 printf '  opencode.json written\n'
 
-# Build the mcp-server
-printf '==> Building mcp-server...\n'
-go build -o "$SANDBOX/mcp-server" ./cmd/mcp-server
-printf '  mcp-server built\n'
+# Build the plan-ai CLI
+printf '==> Building plan-ai...\n'
+go build -o "$SANDBOX/plan-ai" ./cmd/plan-ai
+printf '  plan-ai built\n'
 
 # Helper: encode an MCP JSON-RPC message as a framed message.
 encode_mcp_message() {
@@ -68,7 +68,7 @@ encode_mcp_message() {
 # Run framed initialize via stdio
 printf '==> Running initialize...\n'
 INIT_MSG=$(encode_mcp_message '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}')
-INIT_OUTPUT=$(printf '%s' "$INIT_MSG" | PLAN_AI_MCP_MINIMAL=true "$SANDBOX/mcp-server" stdio 2>&1)
+INIT_OUTPUT=$(printf '%s' "$INIT_MSG" | PLAN_AI_MCP_MINIMAL=true "$SANDBOX/plan-ai" mcp serve 2>&1)
 printf '%s\n' "$INIT_OUTPUT"
 
 if [[ "$INIT_OUTPUT" != *'"protocolVersion"'* ]]; then
@@ -80,7 +80,7 @@ printf '  initialize: OK\n'
 # Run framed tools/list
 printf '==> Running tools/list...\n'
 LIST_MSG=$(encode_mcp_message '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
-TOOLS_OUTPUT=$(printf '%s' "$LIST_MSG" | PLAN_AI_MCP_MINIMAL=true "$SANDBOX/mcp-server" stdio 2>&1)
+TOOLS_OUTPUT=$(printf '%s' "$LIST_MSG" | PLAN_AI_MCP_MINIMAL=true "$SANDBOX/plan-ai" mcp serve 2>&1)
 printf '%s\n' "$TOOLS_OUTPUT"
 
 # Check that only minimal tools are present
@@ -136,7 +136,7 @@ printf '  tools/list: OK (6 minimal tools)\n'
 # Run framed tools/call plan_ai.project_status
 printf '==> Running tools/call plan_ai.project_status...\n'
 CALL_MSG=$(encode_mcp_message '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"plan_ai.project_status","arguments":{}}}')
-CALL_OUTPUT=$(printf '%s' "$CALL_MSG" | PLAN_AI_MCP_MINIMAL=true "$SANDBOX/mcp-server" stdio 2>&1)
+CALL_OUTPUT=$(printf '%s' "$CALL_MSG" | PLAN_AI_MCP_MINIMAL=true "$SANDBOX/plan-ai" mcp serve 2>&1)
 printf '%s\n' "$CALL_OUTPUT"
 
 if [[ "$CALL_OUTPUT" != *'"isError":false'* && "$CALL_OUTPUT" != *'"success":true'* ]]; then

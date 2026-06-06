@@ -21,6 +21,10 @@ const (
 	IntentReject             IntentKind = "reject"
 	IntentValidate           IntentKind = "validate"
 	IntentNextTask           IntentKind = "next_task"
+	IntentAnalyzeProject     IntentKind = "analyze_project"
+	IntentCreateProduct      IntentKind = "create_product"
+	IntentDatabasePlan       IntentKind = "database_plan"
+	IntentImpactAnalysis     IntentKind = "impact_analysis"
 	IntentUnknown            IntentKind = "unknown"
 )
 

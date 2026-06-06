@@ -39,9 +39,9 @@ if [[ -d "$ROOT_DIR/.tmp" ]]; then
   fi
 fi
 
-if git ls-files | grep -E '(^|/)\.plan-ai/|\.db$|\.sqlite3?$|\.env$|\.log$|(^|/)(plan-ai|mcp-server)$' >/dev/null; then
+if git ls-files | grep -E '(^|/)\.plan-ai/|\.db$|\.sqlite3?$|\.env$|\.log$|(^|/)(plan-ai)$' >/dev/null; then
   printf 'tracked runtime artifact detected\n' >&2
-  git ls-files | grep -E '(^|/)\.plan-ai/|\.db$|\.sqlite3?$|\.env$|\.log$|(^|/)(plan-ai|mcp-server)$' >&2
+  git ls-files | grep -E '(^|/)\.plan-ai/|\.db$|\.sqlite3?$|\.env$|\.log$|(^|/)(plan-ai)$' >&2
   exit 1
 fi
 
@@ -55,7 +55,7 @@ git check-ignore -q .plan-ai/test.db
 git check-ignore -q sample.db
 git check-ignore -q .env
 git check-ignore -q plan-ai
-git check-ignore -q mcp-server
+
 if git check-ignore -q cmd/plan-ai/main.go; then
   printf 'cmd/plan-ai/main.go must not be ignored\n' >&2
   exit 1

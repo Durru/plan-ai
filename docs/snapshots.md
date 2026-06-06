@@ -38,7 +38,7 @@ plan-ai snapshot list
 ### Via MCP
 
 ```sh
-mcp-server call-tool plan_ai.create_snapshot '{"reason": "before architecture change"}'
+plan-ai mcp call-tool plan_ai.create_snapshot '{"reason": "before architecture change"}'
 ```
 
 ## Snapshot Lifecycle

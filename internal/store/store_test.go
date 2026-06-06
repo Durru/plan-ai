@@ -54,8 +54,9 @@ func TestGlobalMigrationsAreIdempotent(t *testing.T) {
 	}
 
 	assertTables(t, db, []string{"schema_migrations", "global_metadata", "global_settings", "known_projects", "global_config", "global_tools", "global_integrations", "global_skills", "global_skill_cache", "global_knowledge", "global_research", "global_templates", "global_model_profiles", "global_logs"})
-	assertMigrationCount(t, db, 2)
+	assertMigrationCount(t, db, 3)
 	assertColumns(t, db, "schema_migrations", []string{"id", "name", "applied_at"})
+	assertColumns(t, db, "known_projects", []string{"id", "name", "path", "mode", "slug", "last_seen_at", "created_at", "updated_at"})
 }
 
 func TestProjectMigrationsAreIdempotent(t *testing.T) {
@@ -104,8 +105,9 @@ func TestProjectMigrationsAreIdempotent(t *testing.T) {
 		"subagent_tasks_v2", "opencode_workflows_v2",
 		"intent_v3_product_intents", "intent_v3_discovery_results",
 		"discovery_v3_questions", "discovery_v3_answers",
+		"impact_edges", "capabilities_v2",
 	})
-	assertMigrationCount(t, db, 40)
+	assertMigrationCount(t, db, 44)
 	assertColumns(t, db, "schema_migrations", []string{"id", "name", "applied_at"})
 	assertColumns(t, db, "plans", []string{"id", "type", "title", "summary", "status", "version", "parent_plan_id", "created_at", "updated_at"})
 	assertColumns(t, db, "phases", []string{"id", "plan_id", "title", "summary", "status", "position", "created_at", "updated_at"})

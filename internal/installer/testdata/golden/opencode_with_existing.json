@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent_name": "my-app",
+  "mcp": {
+    "other": {
+      "command": [
+        "other-srv"
+      ],
+      "type": "local"
+    },
+    "plan-ai": {
+      "command": [
+        "plan-ai",
+        "mcp",
+        "serve"
+      ],
+      "enabled": true,
+      "env": {
+        "PLAN_AI_PROJECT_ROOT": "/test/project"
+      },
+      "type": "local"
+    }
+  }
+}

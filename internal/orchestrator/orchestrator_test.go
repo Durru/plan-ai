@@ -252,7 +252,7 @@ func TestOrchestratorJobRuns(t *testing.T) {
 // ──────────────────────────────────────────────
 
 func newTestOrchestrator(db *sql.DB) *orchestrator.Orchestrator {
-	capReg := capabilities.NewDefaultRegistry()
+	capReg := capabilities.NewDefaultRegistry(db)
 	ms := modelstrategy.NewService()
 	jr := store.NewJobRepository(db)
 	rr := store.NewJobRunRepository(db)

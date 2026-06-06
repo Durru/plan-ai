@@ -18,7 +18,7 @@ This separation ensures clean ownership: Plan-AI owns what should be built and w
 │      cmd/plan-ai/ (Cobra, 20+ commands)             │
 ├─────────────────────────────────────────────────────┤
 │                   MCP Server Layer                   │
-│      cmd/mcp-server/ (stdio, 30 tools)              │
+│      cmd/plan-ai mcp serve (stdio, 30 tools)        │
 ├─────────────────────────────────────────────────────┤
 │              Integration & Agent Layer               │
 │  ┌─────────┐ ┌──────────┐ ┌───────────────────┐    │

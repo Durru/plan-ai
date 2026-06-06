@@ -27,6 +27,12 @@ func (d *DefaultIntentDetector) DetectIntent(input string) IntentKind {
 
 	// Multi-word intent detection
 	words := strings.Fields(input)
+	full := strings.Join(words, " ")
+
+	// Check for database plan (before broad "plan"/"create" checks)
+	if containsAny(words, "database", "db", "postgres", "mysql", "sqlite") && containsAny(words, "design", "schema", "plan", "model") {
+		return IntentDatabasePlan
+	}
 
 	// Check for create master plan
 	if containsAny(words, "master", "plan") && containsAny(words, "create", "new", "make") {
@@ -38,9 +44,19 @@ func (d *DefaultIntentDetector) DetectIntent(input string) IntentKind {
 		return IntentCreateSpecificPlan
 	}
 
+	// Check for product creation (before broad "build"/"create" checks)
+	if containsAny(words, "create", "build", "make", "start") && containsAny(words, "saas", "app", "application", "product", "service", "platform") {
+		return IntentCreateProduct
+	}
+
 	// Check for research
 	if containsAny(words, "research", "investigate", "find", "search", "lookup") {
 		return IntentResearchTopic
+	}
+
+	// Impact analysis (BEFORE ChangeRequest so "what if I change X" routes correctly)
+	if containsAny(words, "impact", "impacts", "consequences", "consequence", "risk", "risks", "affect", "affects", "break") || strings.Contains(full, "what if") || strings.Contains(full, "what would happen") || strings.Contains(full, "what are the consequences") {
+		return IntentImpactAnalysis
 	}
 
 	// Check for update plan
@@ -56,6 +72,22 @@ func (d *DefaultIntentDetector) DetectIntent(input string) IntentKind {
 	// Check for implementation help
 	if containsAny(words, "implement", "code", "build", "write", "develop") {
 		return IntentImplementationHelp
+	}
+
+	// Conversation intents — check BEFORE broad status/next-task checks
+	// so phrases like "where are we" route to AnalyzeProject, not Status.
+
+	// Analyze project
+	if containsAny(words, "analyze", "analysis", "summary", "summarize", "overview", "review", "audit") && containsAny(words, "project", "state", "status", "codebase") {
+		return IntentAnalyzeProject
+	}
+	if strings.Contains(full, "what do i have") || strings.Contains(full, "show me what") || strings.Contains(full, "where are we") {
+		return IntentAnalyzeProject
+	}
+
+	// Impact analysis
+	if containsAny(words, "impact", "consequence", "risk", "affect", "break") || strings.Contains(full, "what if") || strings.Contains(full, "what would happen") {
+		return IntentImpactAnalysis
 	}
 
 	// Check for status

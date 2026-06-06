@@ -1,11 +1,17 @@
 package mcp
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/plan-ai/plan-ai/internal/conversation"
 	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/plan-ai/plan-ai/internal/guard"
 	"github.com/plan-ai/plan-ai/internal/intentv3"
 	"github.com/plan-ai/plan-ai/internal/store"
 )
@@ -49,10 +55,50 @@ func formatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
+var (
+	sharedProjectStore   *store.ProjectStore
+	sharedProjectRoot    string
+	sharedProjectClosed  bool
+)
+
+// SetSharedProjectStore opens and caches a project store that will be reused
+// by openStore for the same project root. Callers should call
+// CloseSharedProjectStore when the process is done.
+func SetSharedProjectStore(projectRoot string) error {
+	ps, err := store.OpenProjectStore(projectRoot)
+	if err != nil {
+		return fmt.Errorf("open shared store: %w", err)
+	}
+	if sharedProjectStore != nil && !sharedProjectClosed {
+		sharedProjectStore.Close()
+	}
+	sharedProjectStore = ps
+	sharedProjectRoot = projectRoot
+	sharedProjectClosed = false
+	return nil
+}
+
+// CloseSharedProjectStore closes the shared project store if one is open.
+func CloseSharedProjectStore() error {
+	if sharedProjectStore != nil && !sharedProjectClosed {
+		sharedProjectClosed = true
+		return sharedProjectStore.Close()
+	}
+	return nil
+}
+
 // openStore opens the project store for the given root path.
-// Callers must close the store when done.
-func openStore(projectRoot string) (*store.ProjectStore, error) {
-	return store.OpenProjectStore(projectRoot)
+// Returns the store, a cleanup function (call via defer cleanup()), and any error.
+// If a shared store is active for this project root, the cleanup is a no-op.
+func openStore(projectRoot string) (*store.ProjectStore, func(), error) {
+	if sharedProjectStore != nil && sharedProjectRoot == projectRoot && !sharedProjectClosed {
+		return sharedProjectStore, func() {}, nil
+	}
+	ps, err := store.OpenProjectStore(projectRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ps, func() { ps.Close() }, nil
 }
 
 // projectID returns the canonical project ID for the given root path.
@@ -72,27 +118,159 @@ func HandleInitProject(args map[string]any) (map[string]any, error) {
 		name = projectRoot
 	}
 
-	ps, err := openStore(projectRoot)
+	// Default mode is "external" unless the caller explicitly requests "local".
+	requestedMode := strings.ToLower(strings.TrimSpace(getStringArg(args, "mode")))
+	if requestedMode == "" {
+		requestedMode = config.ProjectModeExternal
+	}
+	if requestedMode != config.ProjectModeExternal && requestedMode != config.ProjectModeLocal {
+		return nil, fmt.Errorf("invalid mode %q: must be %q or %q", requestedMode, config.ProjectModeExternal, config.ProjectModeLocal)
+	}
+
+	home, err := store.ResolveHomeRoot()
 	if err != nil {
-		return nil, fmt.Errorf("init project store: %w", err)
+		return nil, fmt.Errorf("resolve home root: %w", err)
 	}
-	defer ps.Close()
-
-	pid := projectID(projectRoot)
-	if err := store.UpsertProjectState(ps.DB, pid, name, projectRoot, "active"); err != nil {
-		return nil, fmt.Errorf("save project: %w", err)
+	if _, err := os.Stat(config.GlobalDBPath(home)); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("global store not initialized; run `plan-ai install` first")
+		}
+		return nil, fmt.Errorf("stat global db: %w", err)
+	}
+	globalDB, err := store.Open(config.GlobalDBPath(home))
+	if err != nil {
+		return nil, fmt.Errorf("open global db: %w", err)
+	}
+	defer globalDB.Close()
+	if err := store.RunGlobalMigrations(globalDB); err != nil {
+		return nil, fmt.Errorf("run global migrations: %w", err)
 	}
 
-	if err := store.UpsertKnownProject(ps.DB, pid, name, projectRoot); err != nil {
-		return nil, fmt.Errorf("save known project: %w", err)
+	resolver := store.NewProjectResolver(home, globalDB)
+
+	// Check if the project is already registered so we can detect real
+	// "mode mismatch" cases versus fresh registrations.
+	registry := store.NewProjectRegistryRepository(globalDB)
+	existing, existingErr := registry.GetByPath(projectRoot)
+	alreadyRegistered := existingErr == nil
+
+	loc, err := resolver.Resolve(projectRoot)
+	if err != nil {
+		if errors.Is(err, store.ErrLegacyLocalStoreFound) {
+			// A legacy <root>/.plan-ai/project.db exists. Do NOT silently
+			// migrate or overwrite it — surface the choice to the caller.
+			return map[string]any{
+				"status":       "legacy_local_detected",
+				"project_root": projectRoot,
+				"name":         name,
+				"db_path":      config.ProjectDBPath(projectRoot),
+				"hint":         "legacy project-local store detected; pass mode='local' to use it OR run 'plan-ai migrate local-to-global' first",
+			}, nil
+		}
+		return nil, fmt.Errorf("resolve project: %w", err)
+	}
+
+	// Decide the effective mode. The resolver returns a DRAFT external
+	// ProjectLocation when the project is not registered and no legacy
+	// store exists. In that case the caller's requested mode wins.
+	effectiveMode := loc.Mode
+	if !alreadyRegistered {
+		effectiveMode = requestedMode
+		if effectiveMode == config.ProjectModeLocal {
+			// Rebuild a local ProjectLocation manually.
+			layout, err := store.EnsureProjectLayout(projectRoot)
+			if err != nil {
+				return nil, fmt.Errorf("ensure local layout: %w", err)
+			}
+			loc = store.ProjectLocation{
+				ProjectID: store.ProjectID(projectRoot),
+				Name:      name,
+				RootPath:  projectRoot,
+				Slug:      config.ProjectSlug(projectRoot),
+				Mode:      config.ProjectModeLocal,
+				Layout: store.ProjectLocationLayout{
+					Dir:          layout.Dir,
+					ConfigPath:   layout.ConfigPath,
+					CacheDir:     layout.CacheDir,
+					SnapshotsDir: layout.SnapshotsDir,
+					ExportsDir:   layout.ExportsDir,
+					DocsDir:      layout.DocsDir,
+					LocksDir:     layout.LocksDir,
+					BackupsDir:   layout.BackupsDir,
+				},
+				DBPath: layout.DBPath,
+			}
+		}
+	} else {
+		// Project is already registered: surface mode mismatches instead
+		// of silently switching storage layouts.
+		if existing.Mode != requestedMode {
+			return map[string]any{
+				"status":       "mode_mismatch",
+				"project_root": projectRoot,
+				"name":         name,
+				"db_path":      loc.DBPath,
+				"registered_as": existing.Mode,
+				"requested":    requestedMode,
+				"hint":         "project is already registered in a different mode; run 'plan-ai migrate local-to-global' first or pass mode='" + existing.Mode + "'",
+			}, nil
+		}
+	}
+
+	db, err := store.Open(loc.DBPath)
+	if err != nil {
+		return nil, fmt.Errorf("open project db: %w", err)
+	}
+	defer db.Close()
+	if err := store.RunProjectMigrations(db); err != nil {
+		return nil, fmt.Errorf("run project migrations: %w", err)
+	}
+
+	// Persist project metadata in the project DB (project_state table).
+	if err := store.UpsertProjectState(db, loc.ProjectID, name, projectRoot, "active"); err != nil {
+		return nil, fmt.Errorf("save project state: %w", err)
+	}
+
+	// Register the project in the global known_projects registry, recording
+	// the chosen mode and slug.
+	if _, err := registry.Register(store.ProjectRegistryEntry{
+		ID:       loc.ProjectID,
+		Name:     name,
+		RootPath: projectRoot,
+		Slug:     loc.Slug,
+		Mode:     effectiveMode,
+	}); err != nil {
+		return nil, fmt.Errorf("register project: %w", err)
+	}
+
+	// Persist the per-project config.json (now includes Mode).
+	projectCfg := config.ProjectConfig{
+		Version:      "2.0.0",
+		ProjectName:  name,
+		ProjectRoot:  projectRoot,
+		ProjectDB:    loc.DBPath,
+		Mode:         effectiveMode,
+		CreatedAt:    nowUTCString(),
+		Integrations: map[string]any{},
+	}
+	if err := config.SaveProjectConfig(loc.Layout.ConfigPath, projectCfg); err != nil {
+		return nil, fmt.Errorf("save project config: %w", err)
 	}
 
 	return map[string]any{
 		"status":       "initialized",
 		"project_root": projectRoot,
-		"project_id":   pid,
-		"db_path":      ps.Layout.DBPath,
+		"project_id":   loc.ProjectID,
+		"slug":         loc.Slug,
+		"mode":         effectiveMode,
+		"db_path":      loc.DBPath,
+		"config_path":  loc.Layout.ConfigPath,
+		"name":         name,
 	}, nil
+}
+
+func nowUTCString() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
 
 func HandleProjectStatus(args map[string]any) (map[string]any, error) {
@@ -101,19 +279,66 @@ func HandleProjectStatus(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	home, err := store.ResolveHomeRoot()
 	if err != nil {
-		return nil, fmt.Errorf("open project: %w", err)
+		return nil, fmt.Errorf("resolve home root: %w", err)
 	}
-	defer ps.Close()
+	if _, err := os.Stat(config.GlobalDBPath(home)); err != nil {
+		if os.IsNotExist(err) {
+			return map[string]any{
+				"status":       "global_not_initialized",
+				"project_root": projectRoot,
+				"hint":         "global store not initialized; run `plan-ai install` first",
+			}, nil
+		}
+		return nil, fmt.Errorf("stat global db: %w", err)
+	}
+	globalDB, err := store.Open(config.GlobalDBPath(home))
+	if err != nil {
+		return nil, fmt.Errorf("open global db: %w", err)
+	}
+	defer globalDB.Close()
+	if err := store.RunGlobalMigrations(globalDB); err != nil {
+		return nil, fmt.Errorf("run global migrations: %w", err)
+	}
 
-	counts, err := store.CountDomainEntities(ps.DB)
+	resolver := store.NewProjectResolver(home, globalDB)
+	loc, err := resolver.Resolve(projectRoot)
+	if err != nil {
+		if errors.Is(err, store.ErrLegacyLocalStoreFound) {
+			return map[string]any{
+				"status":       "legacy-local-detected",
+				"project_root": projectRoot,
+				"mode":         "legacy-local-detected",
+				"db_path":      config.ProjectDBPath(projectRoot),
+				"hint":         "legacy project-local store detected; run `plan-ai migrate local-to-global` first or pass mode='local' to `init_project`",
+			}, nil
+		}
+		return nil, fmt.Errorf("resolve project: %w", err)
+	}
+
+	db, err := store.Open(loc.DBPath)
+	if err != nil {
+		return nil, fmt.Errorf("open project db: %w", err)
+	}
+	defer db.Close()
+	if err := store.RunProjectMigrations(db); err != nil {
+		return nil, fmt.Errorf("run project migrations: %w", err)
+	}
+
+	counts, err := store.CountDomainEntities(db)
 	if err != nil {
 		return nil, fmt.Errorf("count entities: %w", err)
 	}
 
 	return map[string]any{
+		"status":            "active",
 		"project_root":      projectRoot,
+		"project_id":        loc.ProjectID,
+		"slug":              loc.Slug,
+		"mode":              loc.Mode,
+		"db_path":           loc.DBPath,
+		"config_path":       loc.Layout.ConfigPath,
 		"plans":             counts.Plans,
 		"phases":            counts.Phases,
 		"tasks":             counts.Tasks,
@@ -131,14 +356,23 @@ func HandleCreateMasterPlan(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
+
+	pid := projectID(projectRoot)
+
+	if err := guard.GuardPlanningInput(ps.DB, pid); err != nil {
+		return map[string]any{
+			"status":  "blocked",
+			"message": err.Error(),
+			"next":    "Create and approve a product intent before planning",
+		}, nil
+	}
 
 	repos := store.NewRepositories(ps.DB)
-	pid := projectID(projectRoot)
 
 	plan := domain.MasterPlan{
 		ID:        domain.NewID("plan"),
@@ -170,14 +404,23 @@ func HandleCreateSpecificPlan(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
+
+	pid := projectID(projectRoot)
+
+	if err := guard.GuardPlanningInput(ps.DB, pid); err != nil {
+		return map[string]any{
+			"status":  "blocked",
+			"message": err.Error(),
+			"next":    "Create and approve a product intent before planning",
+		}, nil
+	}
 
 	repos := store.NewRepositories(ps.DB)
-	pid := projectID(projectRoot)
 	masterPlanID := getStringArg(args, "master_plan_id")
 	goal := getStringArg(args, "goal")
 
@@ -212,11 +455,11 @@ func HandleResearchTopic(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	pid := projectID(projectRoot)
@@ -253,11 +496,11 @@ func HandleApprovePlan(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	planID := getStringArg(args, "plan_id")
@@ -278,11 +521,11 @@ func HandleRejectPlan(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	planID := getStringArg(args, "plan_id")
@@ -303,11 +546,11 @@ func HandleAnalyzeImpact(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	pid := projectID(projectRoot)
@@ -352,31 +595,27 @@ func HandleGetNextTask(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
-	var id, title, summary, status, phaseID, planID string
-	var position int
-	err = ps.DB.QueryRow(`SELECT id, phase_id, plan_id, title, summary, status, position FROM tasks WHERE status = 'pending' ORDER BY position, created_at LIMIT 1`).Scan(&id, &phaseID, &planID, &title, &summary, &status, &position)
-	if err != nil {
-		return map[string]any{
-			"found": false,
-			"error": "no pending tasks found",
-		}, nil
+	tasks, err := store.NewRepositories(ps.DB).Task.ListByStatus("pending")
+	if err != nil || len(tasks) == 0 {
+		return map[string]any{"found": false, "error": "no pending tasks found"}, nil
 	}
 
+	t := tasks[0]
 	return map[string]any{
 		"found":    true,
-		"task_id":  id,
-		"phase_id": phaseID,
-		"plan_id":  planID,
-		"title":    title,
-		"summary":  summary,
-		"status":   status,
-		"position": position,
+		"task_id":  t.ID,
+		"phase_id": t.PhaseID,
+		"plan_id":  t.PlanID,
+		"title":    t.Title,
+		"summary":  t.Summary,
+		"status":   string(t.Status),
+		"position": t.Position,
 	}, nil
 }
 
@@ -386,11 +625,11 @@ func HandleMarkTaskDone(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	taskID := getStringArg(args, "task_id")
@@ -411,11 +650,11 @@ func HandleCreateSnapshot(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	pid := projectID(projectRoot)
@@ -446,11 +685,11 @@ func HandleListPlans(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	pid := projectID(projectRoot)
@@ -502,73 +741,81 @@ func HandleListTasks(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	planID := getStringArg(args, "plan_id")
 	statusFilter := getStringArg(args, "status")
 
-	query := `SELECT id, phase_id, plan_id, title, summary, status, position, created_at, updated_at FROM tasks`
-	var conditions []string
-	var params []any
-
+	var tasks []domain.Task
+	var err2 error
+	repos := store.NewRepositories(ps.DB)
 	if planID != "" {
-		conditions = append(conditions, "plan_id = ?")
-		params = append(params, planID)
+		tasks, err2 = repos.Task.ListByPlanID(planID)
+	} else if statusFilter != "" {
+		tasks, err2 = repos.Task.ListByStatus(statusFilter)
+	} else {
+		tasks, err2 = repos.Task.List()
 	}
-	if statusFilter != "" {
-		conditions = append(conditions, "status = ?")
-		params = append(params, statusFilter)
+	if err2 != nil {
+		return nil, fmt.Errorf("query tasks: %w", err2)
 	}
-	if len(conditions) > 0 {
-		query += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	query += " ORDER BY position, created_at"
 
-	rows, err := ps.DB.Query(query, params...)
-	if err != nil {
-		return nil, fmt.Errorf("query tasks: %w", err)
-	}
-	defer rows.Close()
-
-	taskList := make([]map[string]any, 0)
-	for rows.Next() {
-		var id, phaseID, tPlanID, title, summary, status, createdAt, updatedAt string
-		var position int
-		if err := rows.Scan(&id, &phaseID, &tPlanID, &title, &summary, &status, &position, &createdAt, &updatedAt); err != nil {
-			return nil, fmt.Errorf("scan task: %w", err)
+	taskList := make([]map[string]any, len(tasks))
+	for i, t := range tasks {
+		taskList[i] = map[string]any{
+			"id":         t.ID,
+			"phase_id":   t.PhaseID,
+			"plan_id":    t.PlanID,
+			"title":      t.Title,
+			"summary":    t.Summary,
+			"status":     string(t.Status),
+			"position":   t.Position,
+			"created_at": formatTime(t.CreatedAt),
 		}
-		taskList = append(taskList, map[string]any{
-			"id":         id,
-			"phase_id":   phaseID,
-			"plan_id":    tPlanID,
-			"title":      title,
-			"summary":    summary,
-			"status":     status,
-			"position":   position,
-			"created_at": createdAt,
-		})
 	}
 
-	return map[string]any{
-		"tasks": taskList,
-		"count": len(taskList),
-	}, nil
+	return map[string]any{"tasks": taskList, "count": len(taskList)}, nil
 }
 
 // ── Agent System Handlers ──
 
 func HandleAgentProcess(args map[string]any) (map[string]any, error) {
 	message := getStringArg(args, "message")
+	projectRoot, err := getProjectRoot(args)
+	if err != nil {
+		return nil, err
+	}
+
+	ps, cleanup, err := openStore(projectRoot)
+	if err != nil {
+		return map[string]any{
+			"status":  "error",
+			"message": fmt.Sprintf("open project: %v", err),
+		}, nil
+	}
+	defer cleanup()
+
+	gw := conversation.NewGateway(ps.DB)
+	resp, err := gw.ProcessMessage(projectID(projectRoot), message)
+	if err != nil {
+		return map[string]any{
+			"status":  "error",
+			"message": fmt.Sprintf("agent: %v", err),
+		}, nil
+	}
+
 	return map[string]any{
-		"status":  "processed",
-		"message": fmt.Sprintf("Agent processed message (%d chars)", len(message)),
-		"intent":  "unknown",
+		"status":               resp.Status,
+		"message":              resp.Message,
+		"intent":               resp.WorkflowTriggered,
+		"requires_approval":    resp.RequiresApproval,
+		"suggested_next_action": resp.SuggestedNextAction,
 		"response": map[string]any{
-			"text": "Agent processing is a stub. Connect real agent services.",
+			"text": resp.Message,
 		},
 	}, nil
 }
@@ -579,11 +826,11 @@ func HandleAgentRuns(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	pid := projectID(projectRoot)
 	limit := getIntArg(args, "limit")
@@ -591,34 +838,23 @@ func HandleAgentRuns(args map[string]any) (map[string]any, error) {
 		limit = 10
 	}
 
-	rows, err := ps.DB.Query(`SELECT id, intent, status, response, created_at FROM agent_runs_v2 WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`, pid, limit)
+	records, err := store.NewAgentRunV2Repository(ps.DB).ListRuns(pid, limit)
 	if err != nil {
-		return map[string]any{
-			"runs":  []any{},
-			"count": 0,
-		}, nil
+		return map[string]any{"runs": []any{}, "count": 0}, nil
 	}
-	defer rows.Close()
 
-	runs := make([]map[string]any, 0)
-	for rows.Next() {
-		var id, intent, status, response, createdAt string
-		if err := rows.Scan(&id, &intent, &status, &response, &createdAt); err != nil {
-			continue
+	runs := make([]map[string]any, len(records))
+	for i, rec := range records {
+		runs[i] = map[string]any{
+			"id":         rec.ID,
+			"intent":     rec.Intent,
+			"status":     rec.Status,
+			"response":   rec.Response,
+			"created_at": rec.CreatedAt,
 		}
-		runs = append(runs, map[string]any{
-			"id":         id,
-			"intent":     intent,
-			"status":     status,
-			"response":   response,
-			"created_at": createdAt,
-		})
 	}
 
-	return map[string]any{
-		"runs":  runs,
-		"count": len(runs),
-	}, nil
+	return map[string]any{"runs": runs, "count": len(runs)}, nil
 }
 
 // ── Continuous Planning Handlers ──
@@ -629,28 +865,24 @@ func HandleContinuousStatus(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	pid := projectID(projectRoot)
 
-	var id, activePlan, activePhase, nextTask string
-	err = ps.DB.QueryRow(`SELECT id, active_plan, active_phase, next_task FROM continuous_status WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`, pid).Scan(&id, &activePlan, &activePhase, &nextTask)
+	rec, err := store.NewContinuousStatusRepository(ps.DB).GetLatest(pid)
 	if err != nil {
-		return map[string]any{
-			"status":       "inactive",
-			"project_root": projectRoot,
-		}, nil
+		return map[string]any{"status": "inactive", "project_root": projectRoot}, nil
 	}
 
 	return map[string]any{
 		"status":       "active",
-		"active_plan":  activePlan,
-		"active_phase": activePhase,
-		"next_task":    nextTask,
+		"active_plan":  rec.ActivePlan,
+		"active_phase": rec.ActivePhase,
+		"next_task":    rec.NextTask,
 	}, nil
 }
 
@@ -660,11 +892,11 @@ func HandleContinuousEvents(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	pid := projectID(projectRoot)
 	limit := getIntArg(args, "limit")
@@ -672,33 +904,22 @@ func HandleContinuousEvents(args map[string]any) (map[string]any, error) {
 		limit = 10
 	}
 
-	rows, err := ps.DB.Query(`SELECT id, event_type, summary, created_at FROM continuous_events WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`, pid, limit)
+	records, err := store.NewContinuousEventRepository(ps.DB).ListEvents(pid, limit)
 	if err != nil {
-		return map[string]any{
-			"events": []any{},
-			"count":  0,
-		}, nil
+		return map[string]any{"events": []any{}, "count": 0}, nil
 	}
-	defer rows.Close()
 
-	events := make([]map[string]any, 0)
-	for rows.Next() {
-		var id, eventType, summary, createdAt string
-		if err := rows.Scan(&id, &eventType, &summary, &createdAt); err != nil {
-			continue
+	events := make([]map[string]any, len(records))
+	for i, r := range records {
+		events[i] = map[string]any{
+			"id":         r.ID,
+			"event_type": r.EventType,
+			"summary":    r.Summary,
+			"created_at": r.CreatedAt,
 		}
-		events = append(events, map[string]any{
-			"id":         id,
-			"event_type": eventType,
-			"summary":    summary,
-			"created_at": createdAt,
-		})
 	}
 
-	return map[string]any{
-		"events": events,
-		"count":  len(events),
-	}, nil
+	return map[string]any{"events": events, "count": len(events)}, nil
 }
 
 func HandleContinuousProposals(args map[string]any) (map[string]any, error) {
@@ -707,74 +928,56 @@ func HandleContinuousProposals(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	pid := projectID(projectRoot)
 	proposalID := getStringArg(args, "proposal_id")
 
-	// If proposal_id is given, treat this as approve/reject
+	propRepo := store.NewPlanUpdateProposalRepository(ps.DB)
+
 	if proposalID != "" {
-		// Check if there's a status override from the caller context
-		// The tool itself doesn't pass status, so we default to "approved"
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, err := ps.DB.Exec(`UPDATE plan_update_proposals SET status = 'approved', updated_at = ? WHERE id = ?`, now, proposalID)
-		if err != nil {
+		if err := propRepo.UpdateProposalStatus(proposalID, "approved"); err != nil {
 			return nil, fmt.Errorf("update proposal: %w", err)
 		}
-		return map[string]any{
-			"proposal_id": proposalID,
-			"status":      "approved",
-		}, nil
+		return map[string]any{"proposal_id": proposalID, "status": "approved"}, nil
 	}
 
-	// If reason is given, create a new proposal
 	reason := getStringArg(args, "reason")
 	if reason != "" {
 		id := domain.NewID("proposal")
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, err := ps.DB.Exec(`INSERT INTO plan_update_proposals (id, project_id, reason, status, created_at, updated_at) VALUES (?, ?, ?, 'draft', ?, ?)`, id, pid, reason, now, now)
-		if err != nil {
+		prop := store.PlanUpdateProposalRecord{
+			ID: id, ProjectID: pid, Reason: reason,
+			AffectedPlans: "[]", AffectedTasks: "[]", AffectedDecisions: "[]",
+			SuggestedUpdates: "", RequiresResearch: 0, RequiresApproval: 1,
+			Status: "draft",
+		}
+		if _, err := propRepo.CreateProposal(prop); err != nil {
 			return nil, fmt.Errorf("create proposal: %w", err)
 		}
-		return map[string]any{
-			"proposal_id": id,
-			"reason":      reason,
-			"status":      "draft",
-		}, nil
+		return map[string]any{"proposal_id": id, "reason": reason, "status": "draft"}, nil
 	}
 
-	// Otherwise list existing proposals
-	rows, err := ps.DB.Query(`SELECT id, reason, status, created_at FROM plan_update_proposals WHERE project_id = ? ORDER BY created_at DESC LIMIT 20`, pid)
+	proposals, err := propRepo.ListProposals(pid)
 	if err != nil {
-		return map[string]any{
-			"proposals": []any{},
-			"count":     0,
-		}, nil
+		return nil, fmt.Errorf("list proposals: %w", err)
 	}
-	defer rows.Close()
-
-	proposals := make([]map[string]any, 0)
-	for rows.Next() {
-		var id, reason, status, createdAt string
-		if err := rows.Scan(&id, &reason, &status, &createdAt); err != nil {
-			continue
-		}
-		proposals = append(proposals, map[string]any{
-			"id":         id,
-			"reason":     reason,
-			"status":     status,
-			"created_at": createdAt,
+	var out []map[string]any
+	for _, p := range proposals {
+		out = append(out, map[string]any{
+			"id":         p.ID,
+			"reason":     p.Reason,
+			"status":     p.Status,
+			"created_at": p.CreatedAt,
 		})
 	}
-
-	return map[string]any{
-		"proposals": proposals,
-		"count":     len(proposals),
-	}, nil
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return map[string]any{"proposals": out, "count": len(out)}, nil
 }
 
 func HandleContinuousContext(args map[string]any) (map[string]any, error) {
@@ -783,51 +986,51 @@ func HandleContinuousContext(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	pid := projectID(projectRoot)
+	repos := store.NewRepositories(ps.DB)
 	level := getStringArg(args, "level")
 	if level == "" {
 		level = "L0_Executive"
 	}
 
-	// Try to find a cached context delivery first
-	var id, content, createdAt string
-	err = ps.DB.QueryRow(`SELECT id, content, created_at FROM context_deliveries WHERE project_id = ? AND level = ? ORDER BY created_at DESC LIMIT 1`, pid, level).Scan(&id, &content, &createdAt)
-	if err == nil {
+	deliveryRepo := store.NewContextDeliveryRepository(ps.DB)
+	deliveries, _ := deliveryRepo.ListDeliveries(pid, level, 1)
+	if len(deliveries) > 0 {
+		d := deliveries[0]
 		return map[string]any{
 			"level":      level,
-			"content":    content,
+			"content":    d.Content,
 			"cached":     true,
-			"created_at": createdAt,
+			"created_at": d.CreatedAt,
 		}, nil
 	}
 
-	// Build context from domain data
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("# Context Level: %s\n", level))
 	buf.WriteString(fmt.Sprintf("Project ID: %s\n\n", pid))
 
-	// Always include plan summaries
-	planRows, err := ps.DB.Query(`SELECT id, type, title, status, summary FROM plans ORDER BY created_at`)
-	if err == nil {
-		buf.WriteString("## Plans\n\n")
-		for planRows.Next() {
-			var id, ptype, title, status, summary string
-			if err := planRows.Scan(&id, &ptype, &title, &status, &summary); err == nil {
-				buf.WriteString(fmt.Sprintf("- **%s** [%s] (%s) - %s\n", title, ptype, status, id))
-				if summary != "" {
-					buf.WriteString(fmt.Sprintf("  %s\n", summary))
-				}
-			}
+	masterPlans, _ := repos.Plan.ListMastersByProject(pid)
+	specificPlans, _ := repos.Plan.ListSpecificsByMaster("")
+	buf.WriteString("## Plans\n\n")
+	for _, p := range masterPlans {
+		buf.WriteString(fmt.Sprintf("- **%s** [master] (%s) - %s\n", p.Title, p.Status, p.ID))
+		if p.Summary != "" {
+			buf.WriteString(fmt.Sprintf("  %s\n", p.Summary))
 		}
-		planRows.Close()
-		buf.WriteString("\n")
 	}
+	for _, p := range specificPlans {
+		buf.WriteString(fmt.Sprintf("- **%s** [specific] (%s) - %s\n", p.Title, p.Status, p.ID))
+		if p.Summary != "" {
+			buf.WriteString(fmt.Sprintf("  %s\n", p.Summary))
+		}
+	}
+	buf.WriteString("\n")
 
 	switch level {
 	case "L0_Executive":
@@ -841,55 +1044,46 @@ func HandleContinuousContext(args map[string]any) (map[string]any, error) {
 
 	case "L1_Planning":
 		buf.WriteString("## Planning Context\n\n")
-		decRows, err := ps.DB.Query(`SELECT title, decision, status FROM decisions ORDER BY created_at LIMIT 20`)
-		if err == nil {
-			buf.WriteString("### Decisions\n\n")
-			for decRows.Next() {
-				var title, decision, status string
-				if err := decRows.Scan(&title, &decision, &status); err == nil {
-					buf.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", title, status, decision))
-				}
-			}
-			decRows.Close()
+		decisions, _ := repos.Decision.ListByProject(pid)
+		buf.WriteString("### Decisions\n\n")
+		decLimit := 20
+		if len(decisions) < decLimit {
+			decLimit = len(decisions)
+		}
+		for _, d := range decisions[:decLimit] {
+			buf.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", d.Title, d.Status, d.Decision))
 		}
 
-		resRows, err := ps.DB.Query(`SELECT topic, status FROM research_entries ORDER BY created_at LIMIT 20`)
-		if err == nil {
-			buf.WriteString("\n### Research\n\n")
-			for resRows.Next() {
-				var topic, status string
-				if err := resRows.Scan(&topic, &status); err == nil {
-					buf.WriteString(fmt.Sprintf("- **%s** (%s)\n", topic, status))
-				}
-			}
-			resRows.Close()
+		researchEntries, _ := repos.Research.ListByProject(pid)
+		buf.WriteString("\n### Research\n\n")
+		resLimit := 20
+		if len(researchEntries) < resLimit {
+			resLimit = len(researchEntries)
+		}
+		for _, r := range researchEntries[:resLimit] {
+			buf.WriteString(fmt.Sprintf("- **%s** (%s)\n", r.Topic, r.Status))
 		}
 
 	case "L2_Implementation":
 		buf.WriteString("## Implementation Context\n\n")
-		taskRows, err := ps.DB.Query(`SELECT id, title, status, summary FROM tasks ORDER BY position, created_at LIMIT 20`)
-		if err == nil {
-			for taskRows.Next() {
-				var id, title, status, summary string
-				if err := taskRows.Scan(&id, &title, &status, &summary); err == nil {
-					buf.WriteString(fmt.Sprintf("### %s [%s]\n**ID:** %s\n%s\n\n", title, status, id, summary))
-				}
-			}
-			taskRows.Close()
+		tasks, _ := repos.Task.List()
+		taskLimit := 20
+		if len(tasks) < taskLimit {
+			taskLimit = len(tasks)
+		}
+		for _, t := range tasks[:taskLimit] {
+			buf.WriteString(fmt.Sprintf("### %s [%s]\n**ID:** %s\n%s\n\n", t.Title, t.Status, t.ID, t.Summary))
 		}
 
 	case "L3_Research":
 		buf.WriteString("## Research Context\n\n")
-		resRows, err := ps.DB.Query(`SELECT id, topic, summary, status, confidence FROM research_entries ORDER BY created_at LIMIT 30`)
-		if err == nil {
-			for resRows.Next() {
-				var id, topic, summary, status string
-				var confidence float64
-				if err := resRows.Scan(&id, &topic, &summary, &status, &confidence); err == nil {
-					buf.WriteString(fmt.Sprintf("### %s\n**ID:** %s | **Status:** %s | **Confidence:** %.0f\n%s\n\n", topic, id, status, confidence, summary))
-				}
-			}
-			resRows.Close()
+		researchEntries, _ := repos.Research.ListByProject(pid)
+		resLimit := 30
+		if len(researchEntries) < resLimit {
+			resLimit = len(researchEntries)
+		}
+		for _, r := range researchEntries[:resLimit] {
+			buf.WriteString(fmt.Sprintf("### %s\n**ID:** %s | **Status:** %s | **Confidence:** %.0f\n%s\n\n", r.Topic, r.ID, r.Status, r.Confidence, r.Summary))
 		}
 	}
 
@@ -908,12 +1102,14 @@ func HandleGetContext(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
+	pid := projectID(projectRoot)
+	repos := store.NewRepositories(ps.DB)
 	level := getStringArg(args, "level")
 	if level == "" {
 		level = "L0_executive"
@@ -928,83 +1124,65 @@ func HandleGetContext(args map[string]any) (map[string]any, error) {
 		buf.WriteString("# Executive Context\n\n")
 		buf.WriteString(fmt.Sprintf("Project: %s\n\n", projectRoot))
 
-		var planCount, taskCount, decCount, resCount int
-		_ = ps.DB.QueryRow(`SELECT COUNT(*) FROM plans`).Scan(&planCount)
-		_ = ps.DB.QueryRow(`SELECT COUNT(*) FROM tasks`).Scan(&taskCount)
-		_ = ps.DB.QueryRow(`SELECT COUNT(*) FROM decisions`).Scan(&decCount)
-		_ = ps.DB.QueryRow(`SELECT COUNT(*) FROM research_entries`).Scan(&resCount)
+		counts, _ := store.CountDomainEntities(ps.DB)
+		buf.WriteString(fmt.Sprintf("- Plans: %d\n- Tasks: %d\n- Decisions: %d\n- Research entries: %d\n", counts.Plans, counts.Tasks, counts.Decisions, counts.ResearchEntries))
 
-		buf.WriteString(fmt.Sprintf("- Plans: %d\n- Tasks: %d\n- Decisions: %d\n- Research entries: %d\n", planCount, taskCount, decCount, resCount))
-
-		// Include latest plans
-		rows, err := ps.DB.Query(`SELECT title, status FROM plans ORDER BY created_at DESC LIMIT 5`)
-		if err == nil {
-			defer rows.Close()
-			buf.WriteString("\n### Recent Plans\n")
-			for rows.Next() {
-				var title, status string
-				if rows.Scan(&title, &status) == nil {
-					buf.WriteString(fmt.Sprintf("- %s (%s)\n", title, status))
-				}
-			}
+		masters, _ := repos.Plan.ListMastersByProject(pid)
+		buf.WriteString("\n### Recent Plans\n")
+		planLimit := 5
+		if len(masters) < planLimit {
+			planLimit = len(masters)
+		}
+		for _, p := range masters[:planLimit] {
+			buf.WriteString(fmt.Sprintf("- %s (%s)\n", p.Title, p.Status))
 		}
 
 	case "L1_planning":
 		buf.WriteString("# Planning Context\n\n")
-		rows, err := ps.DB.Query(`SELECT id, type, title, status, summary FROM plans ORDER BY created_at`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id, ptype, title, status, summary string
-				if err := rows.Scan(&id, &ptype, &title, &status, &summary); err == nil {
-					buf.WriteString(fmt.Sprintf("## %s [%s]\n**ID:** %s | **Status:** %s\n%s\n\n", title, ptype, id, status, summary))
-				}
-			}
+		masters, _ := repos.Plan.ListMastersByProject(pid)
+		for _, p := range masters {
+			buf.WriteString(fmt.Sprintf("## %s [master]\n**ID:** %s | **Status:** %s\n%s\n\n", p.Title, p.ID, p.Status, p.Summary))
+		}
+		specifics, _ := repos.Plan.ListSpecificsByMaster("")
+		for _, p := range specifics {
+			buf.WriteString(fmt.Sprintf("## %s [specific]\n**ID:** %s | **Status:** %s\n%s\n\n", p.Title, p.ID, p.Status, p.Summary))
 		}
 
 	case "L2_implementation":
 		buf.WriteString("# Implementation Context\n\n")
 		if taskID != "" {
-			var id, title, summary, status string
-			err := ps.DB.QueryRow(`SELECT id, title, summary, status FROM tasks WHERE id = ?`, taskID).Scan(&id, &title, &summary, &status)
+			t, err := repos.Task.GetByID(taskID)
 			if err == nil {
-				buf.WriteString(fmt.Sprintf("## Task: %s\n**ID:** %s | **Status:** %s\n%s\n", title, id, status, summary))
+				buf.WriteString(fmt.Sprintf("## Task: %s\n**ID:** %s | **Status:** %s\n%s\n", t.Title, t.ID, t.Status, t.Summary))
 			} else {
 				buf.WriteString("Task not found.\n")
 			}
 		} else {
-			rows, err := ps.DB.Query(`SELECT id, title, status FROM tasks WHERE status IN ('pending', 'active') ORDER BY position LIMIT 10`)
-			if err == nil {
-				defer rows.Close()
-				buf.WriteString("### Active/Pending Tasks\n")
-				for rows.Next() {
-					var id, title, status string
-					if rows.Scan(&id, &title, &status) == nil {
-						buf.WriteString(fmt.Sprintf("- [%s] %s (%s)\n", status, title, id))
-					}
-				}
+			pending, _ := repos.Task.ListByStatus("pending")
+			active, _ := repos.Task.ListByStatus("active")
+			all := append(pending, active...)
+			buf.WriteString("### Active/Pending Tasks\n")
+			taskLimit := 10
+			if len(all) < taskLimit {
+				taskLimit = len(all)
+			}
+			for _, t := range all[:taskLimit] {
+				buf.WriteString(fmt.Sprintf("- [%s] %s (%s)\n", t.Status, t.Title, t.ID))
 			}
 		}
 
 	case "L3_research":
 		buf.WriteString("# Research Context\n\n")
-		query := `SELECT id, topic, summary, status, confidence FROM research_entries`
-		var params []any
+		var entries []domain.Research
+		var err error
 		if topic != "" {
-			query += " WHERE LOWER(topic) LIKE ?"
-			params = append(params, "%"+strings.ToLower(topic)+"%")
+			entries, err = repos.Research.Search(topic)
+		} else {
+			entries, err = repos.Research.ListByProject(pid)
 		}
-		query += " ORDER BY created_at"
-
-		rows, err := ps.DB.Query(query, params...)
 		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id, resTopic, summary, status string
-				var confidence float64
-				if err := rows.Scan(&id, &resTopic, &summary, &status, &confidence); err == nil {
-					buf.WriteString(fmt.Sprintf("## %s\n**ID:** %s | **Status:** %s | **Confidence:** %.0f\n%s\n\n", resTopic, id, status, confidence, summary))
-				}
+			for _, r := range entries {
+				buf.WriteString(fmt.Sprintf("## %s\n**ID:** %s | **Status:** %s | **Confidence:** %.0f\n%s\n\n", r.Topic, r.ID, r.Status, r.Confidence, r.Summary))
 			}
 		}
 	}
@@ -1021,11 +1199,11 @@ func HandleDetectChanges(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	pid := projectID(projectRoot)
@@ -1051,38 +1229,27 @@ func HandleDetectChanges(args map[string]any) (map[string]any, error) {
 
 	switch changeType {
 	case "plan_changed", "vision_changed":
-		rows, err := ps.DB.Query(`SELECT id FROM plans ORDER BY created_at`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id string
-				if rows.Scan(&id) == nil {
-					affectedPlans = append(affectedPlans, id)
-				}
-			}
+		masters, _ := repos.Plan.ListMastersByProject(pid)
+		for _, p := range masters {
+			affectedPlans = append(affectedPlans, p.ID)
+		}
+		specifics, _ := repos.Plan.ListSpecificsByMaster("")
+		for _, p := range specifics {
+			affectedPlans = append(affectedPlans, p.ID)
 		}
 	case "decision_changed":
-		rows, err := ps.DB.Query(`SELECT id FROM decisions ORDER BY created_at`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id string
-				if rows.Scan(&id) == nil {
-					affectedDecisions = append(affectedDecisions, id)
-				}
-			}
+		decisions, _ := repos.Decision.ListByProject(pid)
+		for _, d := range decisions {
+			affectedDecisions = append(affectedDecisions, d.ID)
 		}
 	case "research_updated", "knowledge_updated":
-		// General-purpose: flag all plans as potentially affected
-		rows, err := ps.DB.Query(`SELECT id FROM plans ORDER BY created_at`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id string
-				if rows.Scan(&id) == nil {
-					affectedPlans = append(affectedPlans, id)
-				}
-			}
+		masters, _ := repos.Plan.ListMastersByProject(pid)
+		for _, p := range masters {
+			affectedPlans = append(affectedPlans, p.ID)
+		}
+		specifics, _ := repos.Plan.ListSpecificsByMaster("")
+		for _, p := range specifics {
+			affectedPlans = append(affectedPlans, p.ID)
 		}
 	}
 
@@ -1114,11 +1281,11 @@ func HandleUpdatePlan(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	repos := store.NewRepositories(ps.DB)
 	planID := getStringArg(args, "plan_id")
@@ -1190,10 +1357,95 @@ func HandleUpdatePlan(args map[string]any) (map[string]any, error) {
 
 func HandleRollbackSnapshot(args map[string]any) (map[string]any, error) {
 	snapshotID := getStringArg(args, "snapshot_id")
+	if snapshotID == "" {
+		return nil, fmt.Errorf("snapshot_id is required")
+	}
+
+	projectRoot, err := getProjectRoot(args)
+	if err != nil {
+		return nil, err
+	}
+
+	ps, cleanup, err := openStore(projectRoot)
+	if err != nil {
+		return nil, fmt.Errorf("open project: %w", err)
+	}
+	defer cleanup()
+
+	repos := store.NewRepositories(ps.DB)
+
+	snap, err := repos.Snapshot.GetByID(snapshotID)
+	if err != nil {
+		return map[string]any{
+			"supported":   false,
+			"snapshot_id": snapshotID,
+			"message":     fmt.Sprintf("snapshot %s not found: %v", snapshotID, err),
+		}, nil
+	}
+
+	// Check snapshots_v2 for entity-level rollback data.
+	snapV2, err := store.NewSnapshotV2Repository(ps.DB).GetByID(snapshotID)
+	if err == nil && snapV2.EntitySnapshot != "" && snapV2.EntitySnapshot != "{}" {
+		var entities map[string]any
+		_ = json.Unmarshal([]byte(snapV2.EntitySnapshot), &entities)
+		restored := 0
+		if plans, ok := entities["plans"].([]any); ok {
+			for _, p := range plans {
+				if pm, ok := p.(map[string]any); ok {
+					planID, _ := pm["id"].(string)
+					status, _ := pm["status"].(string)
+					if planID != "" && status != "" {
+						_ = repos.Plan.UpdatePlanStatus(planID, domain.Status(status))
+						tasksForPlan, _ := repos.Task.ListByPlanID(planID)
+						for _, t := range tasksForPlan {
+							_ = repos.Task.UpdateStatus(t.ID, domain.PlanStatusPending)
+						}
+						restored++
+					}
+				}
+			}
+		}
+		if decisions, ok := entities["decisions"].([]any); ok {
+			for _, d := range decisions {
+				if dm, ok := d.(map[string]any); ok {
+					did, _ := dm["id"].(string)
+					status, _ := dm["status"].(string)
+					if did != "" && status != "" {
+						_ = repos.Decision.UpdateStatus(did, domain.Status(status))
+						restored++
+					}
+				}
+			}
+		}
+		if tasks, ok := entities["tasks"].([]any); ok {
+			for _, t := range tasks {
+				if tm, ok := t.(map[string]any); ok {
+					tid, _ := tm["id"].(string)
+					status, _ := tm["status"].(string)
+					if tid != "" && status != "" {
+						_ = repos.Task.UpdateStatus(tid, domain.Status(status))
+						restored++
+					}
+				}
+			}
+		}
+		return map[string]any{
+			"supported":    true,
+			"snapshot_id":  snapshotID,
+			"reason":       snap.Reason,
+			"summary":      snap.Summary,
+			"restored":     restored,
+			"message":      fmt.Sprintf("Rollback complete: %d entities restored to snapshot state", restored),
+		}, nil
+	}
+
 	return map[string]any{
-		"supported":   false,
+		"supported":   true,
 		"snapshot_id": snapshotID,
-		"message":     "Rollback is not yet implemented. This feature will restore project state from a snapshot in a future release.",
+		"reason":      snap.Reason,
+		"summary":     snap.Summary,
+		"restored":    0,
+		"message":     "Snapshot found but no entity-level rollback data available (use snapshots_v2 with entity_snapshot for full rollback)",
 	}, nil
 }
 
@@ -1203,11 +1455,11 @@ func HandleExportDocs(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("open project: %w", err)
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	format := getStringArg(args, "format")
 	if format == "" {
@@ -1234,15 +1486,9 @@ func HandleExportDocs(args map[string]any) (map[string]any, error) {
 
 	case "decisions":
 		buf.WriteString("# Project Decisions\n\n")
-		rows, err := ps.DB.Query(`SELECT id, title, decision, context, status, impact FROM decisions ORDER BY created_at`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id, title, decision, context, status, impact string
-				if err := rows.Scan(&id, &title, &decision, &context, &status, &impact); err == nil {
-					buf.WriteString(fmt.Sprintf("## %s\n- **ID:** %s\n- **Status:** %s\n\n**Decision:** %s\n\n**Context:** %s\n\n**Impact:** %s\n\n", title, id, status, decision, context, impact))
-				}
-			}
+		decisions, _ := repos.Decision.ListByProject(pid)
+		for _, d := range decisions {
+			buf.WriteString(fmt.Sprintf("## %s\n- **ID:** %s\n- **Status:** %s\n\n**Decision:** %s\n\n**Context:** %s\n\n**Impact:** %s\n\n", d.Title, d.ID, d.Status, d.Decision, d.Context, d.Impact))
 		}
 
 	case "research":
@@ -1267,15 +1513,9 @@ func HandleExportDocs(args map[string]any) (map[string]any, error) {
 
 		// Decisions
 		buf.WriteString("\n## Decisions\n\n")
-		rows, err := ps.DB.Query(`SELECT id, title, decision, status FROM decisions ORDER BY created_at`)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id, title, decision, status string
-				if err := rows.Scan(&id, &title, &decision, &status); err == nil {
-					buf.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", title, status, decision))
-				}
-			}
+		decisions, _ := repos.Decision.ListByProject(pid)
+		for _, d := range decisions {
+			buf.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", d.Title, d.Status, d.Decision))
 		}
 
 		// Research
@@ -1326,11 +1566,11 @@ func HandleCreateProductIntent(args map[string]any) (map[string]any, error) {
 		nonExpectations = strings.Split(ne, "\n")
 	}
 
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1375,11 +1615,11 @@ func HandleListProductIntents(args map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve project root: %w", err)
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1410,11 +1650,11 @@ func HandleGetProductIntent(args map[string]any) (map[string]any, error) {
 	if intentID == "" {
 		return nil, fmt.Errorf("intent_id is required")
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1451,11 +1691,11 @@ func HandleSubmitProductIntent(args map[string]any) (map[string]any, error) {
 	if intentID == "" {
 		return nil, fmt.Errorf("intent_id is required")
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1480,11 +1720,11 @@ func HandleApproveProductIntent(args map[string]any) (map[string]any, error) {
 	if intentID == "" {
 		return nil, fmt.Errorf("intent_id is required")
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1509,11 +1749,11 @@ func HandleRejectProductIntent(args map[string]any) (map[string]any, error) {
 	if intentID == "" {
 		return nil, fmt.Errorf("intent_id is required")
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1540,11 +1780,11 @@ func HandleDiscoverIntent(args map[string]any) (map[string]any, error) {
 	if content == "" {
 		return nil, fmt.Errorf("content is required")
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
@@ -1575,11 +1815,11 @@ func HandleListDiscoveryResults(args map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve project root: %w", err)
 	}
-	ps, err := openStore(projectRoot)
+	ps, cleanup, err := openStore(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer ps.Close()
+	defer cleanup()
 
 	intentRepo := store.NewIntentV3Repository(ps.DB)
 	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)

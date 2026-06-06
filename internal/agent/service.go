@@ -12,6 +12,13 @@ type Service struct {
 	delegator       Delegator
 	responseBuilder ResponseBuilder
 	runRepo         AgentRunRepository
+	planningGuard   PlanningGuard
+}
+
+// PlanningGuard checks whether planning can proceed for a project.
+// A nil guard allows planning without checks (for backward compat).
+type PlanningGuard interface {
+	IsPlanningAllowed(projectID string) (ok bool, reason string)
 }
 
 // NewService creates a new agent service.
@@ -33,6 +40,13 @@ func NewService(
 	}
 }
 
+// SetPlanningGuard attaches an optional planning guard. When set, the service
+// blocks planning intents (create_master_plan, create_specific_plan) until
+// the guard is satisfied.
+func (s *Service) SetPlanningGuard(g PlanningGuard) {
+	s.planningGuard = g
+}
+
 // ProcessMessage handles a user message and returns an agent response.
 func (s *Service) ProcessMessage(projectID, userInput string) (AgentResponse, error) {
 	if projectID == "" {
@@ -46,6 +60,13 @@ func (s *Service) ProcessMessage(projectID, userInput string) (AgentResponse, er
 			"I'm not sure what you'd like to do. You can ask me to create a plan, research a topic, check project status, or request changes.",
 			RouterDecision{Workflow: WorkflowStatus, Capability: CapabilityContext, ContextKeys: []string{}},
 		), nil
+	}
+
+	// Guard planning intents
+	if s.planningGuard != nil && (intent == IntentCreateMasterPlan || intent == IntentCreateSpecificPlan) {
+		if ok, reason := s.planningGuard.IsPlanningAllowed(projectID); !ok {
+			return s.responseBuilder.BuildError(reason), nil
+		}
 	}
 
 	// 2. Load minimal context
@@ -127,6 +148,25 @@ func (s *Service) buildMessage(intent IntentKind, decision RouterDecision, ctx C
 
 	case IntentUpdatePlan:
 		return "I'll prepare the plan update for your review."
+
+	case IntentAnalyzeProject:
+		return fmt.Sprintf("Project analysis: %d plans, %d phases, %d tasks, %d decisions, %d knowledge entries. %d approved requirements.",
+			len(ctx.Plans), len(ctx.Phases), len(ctx.Tasks), len(ctx.Decisions), len(ctx.Knowledge), len(ctx.Approved.Requirements))
+
+	case IntentCreateProduct:
+		if len(ctx.Visions) > 0 && len(ctx.Approved.Requirements) > 0 {
+			return fmt.Sprintf("You have %d existing visions and %d approved requirements. I can create a new product intent for your SaaS. What should the product do?", len(ctx.Visions), len(ctx.Approved.Requirements))
+		}
+		return "I'd like to understand the product you want to create. Tell me about the SaaS or app — what problem does it solve, who is it for, and what are the key features?"
+
+	case IntentDatabasePlan:
+		if len(ctx.Decisions) == 0 {
+			return "I need some decisions or plans first to design a database. What entity types are involved? Use existing plans as a reference."
+		}
+		return fmt.Sprintf("I can design a database schema based on %d decisions and %d plans. What persistence strategy are you considering — SQLite, PostgreSQL, or something else?", len(ctx.Decisions), len(ctx.Plans))
+
+	case IntentImpactAnalysis:
+		return fmt.Sprintf("Impact analysis: I'll examine %d plans, %d tasks, and %d decisions to assess consequences and risks.", len(ctx.Plans), len(ctx.Tasks), len(ctx.Decisions))
 
 	default:
 		return "I understand what you're asking. Let me work on that."

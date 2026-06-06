@@ -15,6 +15,7 @@ type Repositories struct {
 	Research    domainrepos.ResearchRepository
 	Knowledge   domainrepos.KnowledgeRepository
 	Plan        domainrepos.PlanRepository
+	Phase       domainrepos.PhaseRepository
 	Task        domainrepos.TaskRepository
 	Validation  domainrepos.ValidationRepository
 	Snapshot    domainrepos.SnapshotRepository
@@ -31,6 +32,7 @@ func NewRepositories(db *sql.DB) Repositories {
 		Research:    domainrepos.NewResearchRepository(db),
 		Knowledge:   domainrepos.NewKnowledgeRepository(db),
 		Plan:        domainrepos.NewPlanRepository(db),
+		Phase:       domainrepos.NewPhaseRepository(db),
 		Task:        domainrepos.NewTaskRepository(db),
 		Validation:  domainrepos.NewValidationRepository(db),
 		Snapshot:    domainrepos.NewSnapshotRepository(db),

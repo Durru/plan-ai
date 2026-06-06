@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -359,33 +360,53 @@ func (r WorkflowRunRepository) CreateWorkflowRun(run workflows.WorkflowRun) (wor
 	if run.StartedAt.IsZero() {
 		run.StartedAt = time.Now().UTC()
 	}
-	_, err := r.db.Exec(`INSERT INTO workflow_runs (id, workflow_type, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?)`, run.ID, string(run.WorkflowType), string(run.Status), run.StartedAt.UTC().Format(time.RFC3339), formatOptionalTime(run.FinishedAt))
+	stepsJSON := marshalSteps(run.Steps)
+	_, err := r.db.Exec(`INSERT INTO workflow_runs (id, workflow_type, status, steps, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)`, run.ID, string(run.WorkflowType), string(run.Status), stepsJSON, run.StartedAt.UTC().Format(time.RFC3339), formatOptionalTime(run.FinishedAt))
 	if err != nil {
 		return workflows.WorkflowRun{}, err
 	}
 	return r.GetWorkflowRun(run.ID)
 }
 func (r WorkflowRunRepository) UpdateWorkflowRun(run workflows.WorkflowRun) (workflows.WorkflowRun, error) {
-	_, err := r.db.Exec(`UPDATE workflow_runs SET status = ?, finished_at = ? WHERE id = ?`, string(run.Status), formatOptionalTime(run.FinishedAt), run.ID)
+	stepsJSON := marshalSteps(run.Steps)
+	_, err := r.db.Exec(`UPDATE workflow_runs SET status = ?, steps = ?, finished_at = ? WHERE id = ?`, string(run.Status), stepsJSON, formatOptionalTime(run.FinishedAt), run.ID)
 	if err != nil {
 		return workflows.WorkflowRun{}, err
 	}
 	return r.GetWorkflowRun(run.ID)
 }
 func (r WorkflowRunRepository) GetWorkflowRun(id string) (workflows.WorkflowRun, error) {
-	row := r.db.QueryRow(`SELECT id, workflow_type, status, started_at, finished_at FROM workflow_runs WHERE id = ?`, id)
+	row := r.db.QueryRow(`SELECT id, workflow_type, status, COALESCE(steps, '[]'), started_at, finished_at FROM workflow_runs WHERE id = ?`, id)
 	var run workflows.WorkflowRun
-	var typ, status, started, finished string
-	if err := row.Scan(&run.ID, &typ, &status, &started, &finished); err != nil {
+	var typ, status, stepsJSON, started, finished string
+	if err := row.Scan(&run.ID, &typ, &status, &stepsJSON, &started, &finished); err != nil {
 		return run, err
 	}
 	run.WorkflowType = workflows.WorkflowType(typ)
 	run.Status = workflows.RunStatus(status)
+	run.Steps = unmarshalSteps(stepsJSON)
 	run.StartedAt = parseRFC3339(started)
 	if finished != "" {
 		run.FinishedAt = parseRFC3339(finished)
 	}
 	return run, nil
+}
+
+func marshalSteps(steps []workflows.Step) string {
+	if steps == nil {
+		return "[]"
+	}
+	b, _ := json.Marshal(steps)
+	return string(b)
+}
+
+func unmarshalSteps(raw string) []workflows.Step {
+	if raw == "" || raw == "[]" {
+		return nil
+	}
+	var steps []workflows.Step
+	_ = json.Unmarshal([]byte(raw), &steps)
+	return steps
 }
 func formatOptionalTime(t time.Time) string {
 	if t.IsZero() {

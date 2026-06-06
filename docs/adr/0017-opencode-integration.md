@@ -1,6 +1,6 @@
 # ADR-0017: OpenCode Integration
 
-**Status:** Approved  
+**Status:** Superseded by [ADR 0021](./0021-safe-opencode-auto-configuration.md) on 2026-06-06  
 **Date:** 2026-06-03  
 **Phase:** 20
 

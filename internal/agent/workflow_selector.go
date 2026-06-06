@@ -25,6 +25,14 @@ func (s *DefaultWorkflowSelector) Select(intent IntentKind) string {
 		return WorkflowPlanning
 	case IntentValidate:
 		return WorkflowApproval
+	case IntentAnalyzeProject:
+		return WorkflowContext
+	case IntentCreateProduct:
+		return WorkflowVision
+	case IntentDatabasePlan:
+		return WorkflowPlanning
+	case IntentImpactAnalysis:
+		return WorkflowImpact
 	default:
 		return WorkflowStatus
 	}

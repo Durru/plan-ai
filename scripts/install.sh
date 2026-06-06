@@ -20,7 +20,6 @@ BIN_DIR="$PREFIX/bin"
 mkdir -p "$BIN_DIR"
 
 PLAN_AI_BIN="$BIN_DIR/plan-ai"
-MCP_BIN="$BIN_DIR/plan-ai-mcp-server"
 
 printf 'Installing Plan-AI from %s\n' "$ROOT_DIR"
 printf 'Install prefix: %s\n' "$PREFIX"
@@ -28,13 +27,11 @@ printf 'Install prefix: %s\n' "$PREFIX"
 (
   cd "$ROOT_DIR"
   go build -o "$PLAN_AI_BIN" ./cmd/plan-ai
-  go build -o "$MCP_BIN" ./cmd/mcp-server
 )
 
-chmod 0755 "$PLAN_AI_BIN" "$MCP_BIN"
+chmod 0755 "$PLAN_AI_BIN"
 
 printf 'Installed: %s\n' "$PLAN_AI_BIN"
-printf 'Installed: %s\n' "$MCP_BIN"
 
 if [[ "${PLAN_AI_SKIP_INIT:-0}" != "1" ]]; then
   "$PLAN_AI_BIN" install

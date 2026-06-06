@@ -23,6 +23,14 @@ func (s *DefaultCapabilitySelector) Select(intent IntentKind) string {
 		return CapabilityContext
 	case IntentImplementationHelp, IntentUpdatePlan:
 		return CapabilityPlanning
+	case IntentAnalyzeProject:
+		return CapabilityContext
+	case IntentCreateProduct:
+		return CapabilityVision
+	case IntentDatabasePlan:
+		return CapabilityPlanning
+	case IntentImpactAnalysis:
+		return CapabilityChange
 	default:
 		return CapabilityContext
 	}

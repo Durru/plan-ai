@@ -117,7 +117,7 @@ func TestSetupService_MergesPlanAIMCPIntoExistingConfig(t *testing.T) {
 	}
 	planAI := mcpMap["plan-ai"].(map[string]any)
 	command := planAI["command"].([]any)
-	if command[0] != "plan-ai-mcp-server" {
+	if !sameCommand(command, []string{"plan-ai", "mcp", "serve"}) {
 		t.Fatalf("plan-ai mcp command = %#v", command)
 	}
 }
@@ -378,7 +378,7 @@ func TestSetupService_GeneratedMCPRegistryUsesRealServerAndTools(t *testing.T) {
 		t.Fatalf("registry name = %v", registry["name"])
 	}
 	command, ok := registry["command"].([]any)
-	if !ok || len(command) == 0 || command[0] != "plan-ai-mcp-server" {
+	if !ok || !sameCommand(command, []string{"plan-ai", "mcp", "serve"}) {
 		t.Fatalf("registry command = %#v", registry["command"])
 	}
 	tools, ok := registry["tools"].([]any)
@@ -398,6 +398,18 @@ func TestSetupService_GeneratedMCPRegistryUsesRealServerAndTools(t *testing.T) {
 			t.Fatalf("registry missing real MCP tool %q; seen=%v", want, seen)
 		}
 	}
+}
+
+func sameCommand(got []any, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSetupService_GeneratedAgentIsValid(t *testing.T) {

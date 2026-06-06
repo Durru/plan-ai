@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/plan-ai/plan-ai/internal/config"
@@ -70,6 +71,44 @@ func EnsureProjectLayout(projectRoot string) (ProjectLayout, error) {
 		DocsDir:      config.ProjectDocsDir(projectRoot),
 		LocksDir:     config.ProjectLocksDir(projectRoot),
 		BackupsDir:   config.ProjectBackupsDir(projectRoot),
+	}
+	for _, dir := range []string{layout.Dir, layout.CacheDir, layout.SnapshotsDir, layout.ExportsDir, layout.DocsDir, layout.LocksDir, layout.BackupsDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return layout, err
+		}
+	}
+	return layout, nil
+}
+
+// ExternalProjectLayout describes the on-disk layout of an external project
+// (one that lives under the global Plan-AI home instead of inside the
+// project's working tree).
+type ExternalProjectLayout struct {
+	Dir          string
+	DBPath       string
+	ConfigPath   string
+	CacheDir     string
+	SnapshotsDir string
+	ExportsDir   string
+	DocsDir      string
+	LocksDir     string
+	BackupsDir   string
+}
+
+// EnsureExternalProjectLayout creates the on-disk directories required for
+// an external project under <home>/.plan-ai/projects/<slug>/. It is safe to
+// call repeatedly: existing directories are left untouched.
+func EnsureExternalProjectLayout(homeDir, projectSlug string) (ExternalProjectLayout, error) {
+	layout := ExternalProjectLayout{
+		Dir:          config.ExternalProjectDir(homeDir, projectSlug),
+		DBPath:       config.ExternalProjectDBPath(homeDir, projectSlug),
+		ConfigPath:   config.ExternalProjectConfigPath(homeDir, projectSlug),
+		CacheDir:     config.ExternalProjectCacheDir(homeDir, projectSlug),
+		SnapshotsDir: config.ExternalProjectSnapshotsDir(homeDir, projectSlug),
+		ExportsDir:   config.ExternalProjectExportsDir(homeDir, projectSlug),
+		DocsDir:      config.ExternalProjectDocsDir(homeDir, projectSlug),
+		LocksDir:     config.ExternalProjectLocksDir(homeDir, projectSlug),
+		BackupsDir:   config.ExternalProjectBackupsDir(homeDir, projectSlug),
 	}
 	for _, dir := range []string{layout.Dir, layout.CacheDir, layout.SnapshotsDir, layout.ExportsDir, layout.DocsDir, layout.LocksDir, layout.BackupsDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -145,6 +184,17 @@ CREATE INDEX IF NOT EXISTS idx_global_skills_name ON global_skills(name);
 CREATE INDEX IF NOT EXISTS idx_global_knowledge_topic ON global_knowledge(topic);
 CREATE INDEX IF NOT EXISTS idx_global_research_topic ON global_research(topic);
 `,
+	}, {
+		ID:   "0008_project_registry_v2",
+		Name: "Extend known_projects with mode, slug, last_seen_at",
+		SQL: `
+ALTER TABLE known_projects ADD COLUMN mode TEXT NOT NULL DEFAULT 'external';
+ALTER TABLE known_projects ADD COLUMN slug TEXT NOT NULL DEFAULT '';
+ALTER TABLE known_projects ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT '';
+UPDATE known_projects SET slug = name WHERE slug = '';
+CREATE INDEX IF NOT EXISTS idx_known_projects_slug ON known_projects(slug);
+CREATE INDEX IF NOT EXISTS idx_known_projects_mode ON known_projects(mode);
+`,
 	}})
 }
 
@@ -214,11 +264,14 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL DEFAULT '',
   title TEXT NOT NULL,
   context TEXT NOT NULL,
   decision TEXT NOT NULL,
   status TEXT NOT NULL,
   impact TEXT NOT NULL,
+  supersedes_id TEXT NOT NULL DEFAULT '',
+  superseded_by_id TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -578,6 +631,26 @@ CREATE INDEX IF NOT EXISTS idx_research_knowledge_links_knowledge_id ON research
 			Name: "Create V3 progressive discovery tables (Phase 53)",
 			SQL:  projectV3DiscoveryProgressiveSQL,
 		},
+		{
+			ID:   "0042_fts5_search",
+			Name: "Create FTS5 indexes for full-text search",
+			SQL:  projectFTS5SQL,
+		},
+		{
+			ID:   "0043_impact_graph",
+			Name: "Create impact graph edges table",
+			SQL:  projectImpactGraphSQL,
+		},
+		{
+			ID:   "0044_capabilities_v2",
+			Name: "Create capabilities_v2 registry table",
+			SQL:  projectCapabilitiesV2SQL,
+		},
+		{
+			ID:   "0045_workflow_runs_steps",
+			Name: "Add steps column to workflow_runs for step-by-step execution",
+			SQL:  projectWorkflowRunsStepsSQL,
+		},
 	})
 }
 
@@ -601,12 +674,14 @@ CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, project_id TEXT NOT 
 CREATE TABLE IF NOT EXISTS subagent_outputs (id TEXT PRIMARY KEY, agent_run_id TEXT NOT NULL, subagent_name TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS file_snapshots (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS file_change_events (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, path TEXT NOT NULL, event_type TEXT NOT NULL, created_at TEXT NOT NULL);
-ALTER TABLE decisions ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
+-- project_id, supersedes_id, superseded_by_id are now in CREATE TABLE decisions; keep only legacy ALTER columns
 ALTER TABLE decisions ADD COLUMN rationale TEXT NOT NULL DEFAULT '';
 ALTER TABLE decisions ADD COLUMN alternatives TEXT NOT NULL DEFAULT '';
 ALTER TABLE research_entries ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE research_entries ADD COLUMN objective TEXT NOT NULL DEFAULT '';
 ALTER TABLE research_entries ADD COLUMN date TEXT NOT NULL DEFAULT '';
+ALTER TABLE research_entries ADD COLUMN reuse_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE research_entries ADD COLUMN reused_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE knowledge_objects ADD COLUMN type TEXT NOT NULL DEFAULT 'reference';
 ALTER TABLE phases ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE tasks ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
@@ -649,12 +724,18 @@ ALTER TABLE visions ADD COLUMN assumptions TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE visions ADD COLUMN missing_information TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE visions ADD COLUMN visual_references TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE visions ADD COLUMN success_criteria TEXT NOT NULL DEFAULT '[]';
-CREATE TABLE IF NOT EXISTS approved_requirements (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
-CREATE TABLE IF NOT EXISTS approved_constraints (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
-CREATE TABLE IF NOT EXISTS approved_decisions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
-CREATE TABLE IF NOT EXISTS approved_preferences (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
-CREATE TABLE IF NOT EXISTS approved_references (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
-CREATE TABLE IF NOT EXISTS approved_goals (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
+-- approved_requirements: requirements approved for planning
+CREATE TABLE IF NOT EXISTS approved_requirements (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', supersedes_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
+-- approved_constraints: constraints approved for planning  
+CREATE TABLE IF NOT EXISTS approved_constraints (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', supersedes_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
+-- approved_decisions: decisions approved for planning
+CREATE TABLE IF NOT EXISTS approved_decisions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', supersedes_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
+-- approved_preferences: preferences approved for planning
+CREATE TABLE IF NOT EXISTS approved_preferences (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', supersedes_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
+-- approved_references: references approved for planning
+CREATE TABLE IF NOT EXISTS approved_references (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', supersedes_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
+-- approved_goals: goals approved for planning
+CREATE TABLE IF NOT EXISTS approved_goals (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'approved', supersedes_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, content));
 CREATE INDEX IF NOT EXISTS idx_ingested_sources_project ON ingested_sources(project_id);
 CREATE INDEX IF NOT EXISTS idx_ingested_sources_classification ON ingested_sources(classification);
 CREATE INDEX IF NOT EXISTS idx_approved_requirements_project ON approved_requirements(project_id);
@@ -712,6 +793,10 @@ const projectWorkflowsSQL = `
 CREATE TABLE IF NOT EXISTS workflow_runs (id TEXT PRIMARY KEY, workflow_type TEXT NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_type ON workflow_runs(workflow_type);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_status ON workflow_runs(status);
+`
+
+const projectWorkflowRunsStepsSQL = `
+ALTER TABLE workflow_runs ADD COLUMN steps TEXT NOT NULL DEFAULT '[]';
 `
 
 const projectModelStrategySQL = `
@@ -831,9 +916,24 @@ func runMigrations(db *sql.DB, migrations []Migration) error {
 
 func UpsertKnownProject(db *sql.DB, id, name, path string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(`INSERT INTO known_projects (id, name, path, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(path) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`, id, name, path, now, now)
+	_, err := db.Exec(`INSERT INTO known_projects (id, name, path, mode, slug, created_at, updated_at, last_seen_at)
+VALUES (?, ?, ?, 'external', ?, ?, ?, ?)
+ON CONFLICT(path) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at, last_seen_at = excluded.last_seen_at, slug = excluded.slug`, id, name, path, name, now, now, now)
+	return err
+}
+
+// UpsertKnownProjectWithMode registers or refreshes a project in the global
+// registry, recording whether it uses external or local storage.
+func UpsertKnownProjectWithMode(db *sql.DB, id, name, path, slug, mode string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.Exec(`INSERT INTO known_projects (id, name, path, mode, slug, created_at, updated_at, last_seen_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(path) DO UPDATE SET
+  name = excluded.name,
+  mode = excluded.mode,
+  slug = excluded.slug,
+  updated_at = excluded.updated_at,
+  last_seen_at = excluded.last_seen_at`, id, name, path, mode, slug, now, now, now)
 	return err
 }
 
@@ -899,6 +999,22 @@ CREATE INDEX IF NOT EXISTS idx_change_events_status ON change_events(status);
 CREATE INDEX IF NOT EXISTS idx_change_reports_event ON change_reports(change_event_id);
 CREATE INDEX IF NOT EXISTS idx_change_reports_project ON change_reports(project_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_v2_project ON snapshots_v2(project_id);
+
+-- entity_links: cross-entity traceability for Impact Graph traversal
+CREATE TABLE IF NOT EXISTS entity_links (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  link_type TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(source_type, source_id, target_type, target_id, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_links_project ON entity_links(project_id);
+CREATE INDEX IF NOT EXISTS idx_entity_links_source ON entity_links(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_entity_links_target ON entity_links(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_entity_states_project ON entity_states(project_id);
 CREATE INDEX IF NOT EXISTS idx_entity_states_type ON entity_states(entity_type);
 CREATE INDEX IF NOT EXISTS idx_entity_states_status ON entity_states(status);
@@ -1530,3 +1646,108 @@ CREATE INDEX IF NOT EXISTS idx_project_memory_v2_project ON project_memory_v2(pr
 CREATE INDEX IF NOT EXISTS idx_project_memory_v2_type ON project_memory_v2(entry_type);
 CREATE INDEX IF NOT EXISTS idx_project_memory_v2_status ON project_memory_v2(status);
 `
+
+const projectFTS5SQL = `
+-- Rebuild existing knowledge_objects_fts index from current data
+INSERT INTO knowledge_objects_fts(knowledge_objects_fts) VALUES('rebuild');
+
+-- Keep knowledge_objects_fts in sync
+-- NOTE: modernc.org/sqlite does not support the fts5 'delete' command on
+-- plain (non-content) fts5 tables, so we use DELETE FROM ... WHERE rowid = ?
+CREATE TRIGGER IF NOT EXISTS knowledge_objects_fts_insert AFTER INSERT ON knowledge_objects BEGIN
+  INSERT INTO knowledge_objects_fts(rowid, id, topic, summary, content)
+  VALUES (new.rowid, new.id, new.topic, new.summary, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS knowledge_objects_fts_delete AFTER DELETE ON knowledge_objects BEGIN
+  DELETE FROM knowledge_objects_fts WHERE rowid = old.rowid;
+END;
+
+CREATE TRIGGER IF NOT EXISTS knowledge_objects_fts_update AFTER UPDATE ON knowledge_objects BEGIN
+  DELETE FROM knowledge_objects_fts WHERE rowid = old.rowid;
+  INSERT INTO knowledge_objects_fts(rowid, id, topic, summary, content)
+  VALUES (new.rowid, new.id, new.topic, new.summary, new.content);
+END;
+
+-- FTS5 external content table for project_memory_v2
+CREATE VIRTUAL TABLE IF NOT EXISTS project_memory_v2_fts USING fts5(
+  id UNINDEXED,
+  title,
+  question,
+  answer,
+  content,
+  citation,
+  source,
+  tokenize='porter unicode61',
+  content=project_memory_v2,
+  content_rowid=rowid
+);
+
+-- Populate project_memory_v2_fts from existing data
+INSERT INTO project_memory_v2_fts(rowid, id, title, question, answer, content, citation, source)
+SELECT rowid, id, title, question, answer, content, citation, source FROM project_memory_v2;
+
+-- Keep project_memory_v2_fts in sync
+CREATE TRIGGER IF NOT EXISTS project_memory_v2_fts_insert AFTER INSERT ON project_memory_v2 BEGIN
+  INSERT INTO project_memory_v2_fts(rowid, id, title, question, answer, content, citation, source)
+  VALUES (new.rowid, new.id, new.title, new.question, new.answer, new.content, new.citation, new.source);
+END;
+
+CREATE TRIGGER IF NOT EXISTS project_memory_v2_fts_delete AFTER DELETE ON project_memory_v2 BEGIN
+  INSERT INTO project_memory_v2_fts(project_memory_v2_fts, rowid, id, title, question, answer, content, citation, source)
+  VALUES ('delete', old.rowid, old.id, old.title, old.question, old.answer, old.content, old.citation, old.source);
+END;
+
+CREATE TRIGGER IF NOT EXISTS project_memory_v2_fts_update AFTER UPDATE ON project_memory_v2 BEGIN
+  INSERT INTO project_memory_v2_fts(project_memory_v2_fts, rowid, id, title, question, answer, content, citation, source)
+  VALUES ('delete', old.rowid, old.id, old.title, old.question, old.answer, old.content, old.citation, old.source);
+  INSERT INTO project_memory_v2_fts(rowid, id, title, question, answer, content, citation, source)
+  VALUES (new.rowid, new.id, new.title, new.question, new.answer, new.content, new.citation, new.source);
+END;
+`
+
+const projectImpactGraphSQL = `
+CREATE TABLE IF NOT EXISTS impact_edges (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  edge_type TEXT NOT NULL,
+  weight INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  UNIQUE(source_type, source_id, target_type, target_id, edge_type)
+);
+CREATE INDEX IF NOT EXISTS idx_impact_edges_project ON impact_edges(project_id);
+CREATE INDEX IF NOT EXISTS idx_impact_edges_source ON impact_edges(source_type, source_id);
+`
+
+const projectCapabilitiesV2SQL = `
+CREATE TABLE IF NOT EXISTS capabilities_v2 (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  schema_info TEXT NOT NULL DEFAULT '{}',
+  version TEXT NOT NULL DEFAULT '1.0',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+`
+
+// sanitizeFTS5 sanitizes a user-supplied query string for safe use in
+// FTS5 MATCH. Each word is quoted to prevent FTS5 syntax errors from
+// special characters (operators, parens, etc.). Returns "" for empty
+// or whitespace-only input so callers can fall back to listing.
+func sanitizeFTS5(query string) string {
+	terms := strings.Fields(query)
+	if len(terms) == 0 {
+		return ""
+	}
+	escaped := make([]string, len(terms))
+	for i, t := range terms {
+		t = strings.ReplaceAll(t, `"`, `""`)
+		escaped[i] = `"` + t + `"`
+	}
+	return strings.Join(escaped, " ")
+}

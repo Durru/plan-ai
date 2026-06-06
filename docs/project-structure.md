@@ -3,10 +3,7 @@
 ```
 plan-ai/
 ├── cmd/
-│   ├── plan-ai/                     # CLI entry point
-│   │   └── main.go                  #   Cobra root, all commands
-│   └── mcp-server/                  # MCP server entry point
-│       └── main.go                  #   stdio JSON-RPC server
+│   └── plan-ai/                     # CLI entry point (all commands, MCP serve)
 │
 ├── internal/
 │   ├── agent/                       # Agent system

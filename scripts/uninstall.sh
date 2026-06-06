@@ -40,7 +40,7 @@ if command -v "$BIN_DIR/plan-ai" >/dev/null 2>&1; then
   "$BIN_DIR/plan-ai" uninstall 2>/dev/null || true
 fi
 
-for bin in "$BIN_DIR/plan-ai" "$BIN_DIR/plan-ai-mcp-server"; do
+for bin in "$BIN_DIR/plan-ai"; do
   if [[ -e "$bin" ]]; then
     rm -f "$bin"
     printf 'Removed: %s\n' "$bin"

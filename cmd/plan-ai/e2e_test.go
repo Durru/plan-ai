@@ -1,8 +1,15 @@
 package main
 
 import (
+	"database/sql"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	_ "modernc.org/sqlite"
+
+	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/plan-ai/plan-ai/internal/store"
 )
 
 // ──────────────────────────────────────────────
@@ -109,7 +116,25 @@ func TestE2E_MultiTenantWithVisionAndApproved(t *testing.T) {
 	// Domain seed
 	runStep(t, home, project, "Domain seed: created", "dev", "seed-domain")
 
-	// Plan command works now because we have vision + approved context
+	// Create and approve product intent before planning (Phase 5 guard).
+	// Direct DB insert bypasses the CLI lifecycle to avoid resolver/Chdir issues.
+	{
+		pid := store.ProjectID(project)
+		slug := config.ProjectSlug(project)
+		projDBPath := filepath.Join(home, ".plan-ai", "projects", slug, "project.db")
+		projDB, err := sql.Open("sqlite", projDBPath+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+		if err != nil {
+			t.Fatalf("open project db for intent: %v", err)
+		}
+		_, err = projDB.Exec(`INSERT OR IGNORE INTO intent_v3_product_intents (id, project_id, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+			"pintent_e2e", pid, "Multi-tenant SaaS platform", "approved")
+		projDB.Close()
+		if err != nil {
+			t.Fatalf("insert approved intent: %v", err)
+		}
+	}
+
+	// Plan command works now because we have vision + approved context + approved intent
 	out := runStep(t, home, project, "", "plan")
 	for _, want := range []string{"master_plan:", "specific_plan:", "implementation_document:"} {
 		if !strings.Contains(out, want) {

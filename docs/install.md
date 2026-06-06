@@ -26,12 +26,11 @@ bash scripts/install.sh
 The installer:
 
 1. Builds `plan-ai` from `./cmd/plan-ai`.
-2. Builds `plan-ai-mcp-server` from `./cmd/mcp-server`.
-3. Installs both into:
+2. Installs it into:
    - `/usr/local/bin` when run as root.
    - `$HOME/.local/bin` when run as a normal user.
    - `$PLAN_AI_INSTALL_PREFIX/bin` when `PLAN_AI_INSTALL_PREFIX` is set.
-4. Runs `plan-ai install` to create/migrate the global store.
+3. Runs `plan-ai install` to create/migrate the global store.
 
 ## Non-root install
 

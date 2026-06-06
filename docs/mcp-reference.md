@@ -1,16 +1,17 @@
 # MCP Reference
 
-Plan-AI exposes a stdio-based MCP (Model Context Protocol) server at `cmd/mcp-server/` with 30 tools. The server uses JSON-RPC 2.0 over stdin/stdout.
+Plan-AI exposes a stdio-based MCP (Model Context Protocol) server through `plan-ai mcp serve`. The server uses JSON-RPC 2.0 over stdin/stdout.
 
 ## Starting the server
 
 ```bash
-go run ./cmd/mcp-server
+go run ./cmd/plan-ai mcp serve
 ```
 
 Or from a built binary:
+
 ```bash
-plan-ai-mcp-server
+plan-ai mcp serve
 ```
 
 ## Tool categories

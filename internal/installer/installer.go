@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"time"
 
@@ -13,8 +14,8 @@ import (
 // stateVersion is the current schema version for state.json.
 const stateVersion = "1"
 
-// binNameMCP is the name of the MCP server binary.
-const binNameMCP = "plan-ai-mcp-server"
+// binNameMCP is the CLI binary that serves MCP through `plan-ai mcp serve`.
+const binNameMCP = config.BinNameMCP
 
 // backupTimeFormat is used for backup file naming.
 const backupTimeFormat = "20060102-150405"
@@ -64,7 +65,7 @@ func (inst *Installer) SaveState() error {
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	return writeFileAtomically(path, data, 0644)
 }
 
 // ── tool detection ──────────────────────────────────────
@@ -122,7 +123,7 @@ func (inst *Installer) DetectTools() ToolsDetected {
 
 	// Also detect OpenCode via config dir
 	if !t.OpenCode {
-		if ocDir := openCodeConfigDir(); ocDir != "" {
+		if ocDir := openCodeConfigDir(inst.HomeDir); ocDir != "" {
 			candidates := []string{
 				filepath.Join(ocDir, "opencode.json"),
 				filepath.Join(ocDir, "opencode.jsonc"),
@@ -227,6 +228,60 @@ func (inst *Installer) Sync(opts InstallOptions) error {
 	return inst.SaveState()
 }
 
+// SyncPlan describes what a Sync operation would change.
+type SyncPlan struct {
+	WillSync    bool     // true if there's something to sync
+	FilesPlan  []string // planned file changes
+	OpenCode   string   // "add" | "update" | "remove" | "none"
+	OpenCodeNew string  // new opencode config content (empty if no change)
+}
+
+// PreviewSync generates a plan of what Sync would change, without writing anything.
+// Returns nil plan (not error) if there's nothing to sync.
+func (inst *Installer) PreviewSync() (*SyncPlan, error) {
+	if inst.State == nil {
+		if err := inst.LoadState(); err != nil {
+			return nil, nil // nothing to sync
+		}
+	}
+
+	plan := &SyncPlan{WillSync: false}
+
+	needsOC := inst.State.Components[CompOpenCode].Installed || inst.State.Components[CompMCP].Installed
+	if !needsOC {
+		return plan, nil
+	}
+
+	ocDir := openCodeConfigDir(inst.HomeDir)
+	if ocDir == "" {
+		return plan, nil
+	}
+
+	currentPath := openCodeConfigPath(ocDir)
+	plan.FilesPlan = append(plan.FilesPlan, currentPath)
+
+	// Determine action: add, update, or none
+	if _, err := os.Stat(currentPath); err == nil {
+		plan.OpenCode = "update"
+	} else {
+		plan.OpenCode = "add"
+	}
+
+	// Generate the planned content in-memory
+	binDir := ""
+	if inst.State != nil {
+		binDir = inst.State.BinDir
+	}
+	content, err := generateOpenCodeConfigContent(ocDir, binDir)
+	if err != nil {
+		return nil, fmt.Errorf("generate preview: %w", err)
+	}
+	plan.OpenCodeNew = string(content)
+	plan.WillSync = true
+
+	return plan, nil
+}
+
 // ── uninstall ───────────────────────────────────────────
 
 // Uninstall removes components from state and optionally cleans up
@@ -240,7 +295,16 @@ func (inst *Installer) Uninstall(components []string) error {
 	}
 
 	if len(components) == 0 {
-		// Full uninstall — remove state and data
+		// Full uninstall — surgically remove Plan-AI's footprint:
+		//   1. Strip the plan-ai MCP entry from the opencode config
+		//      (with a backup so a user mistake is recoverable).
+		//   2. Remove the global data dir (state, db, subdirs).
+		if err := inst.backupOpenCodeConfig(); err != nil {
+			return fmt.Errorf("backup before full uninstall: %w", err)
+		}
+		if err := inst.removePlanAIFromOpenCode(); err != nil {
+			return fmt.Errorf("remove plan-ai from opencode: %w", err)
+		}
 		if err := os.RemoveAll(inst.DataDir); err != nil {
 			return fmt.Errorf("remove data dir: %w", err)
 		}
@@ -306,20 +370,30 @@ func (inst *Installer) Doctor() *DoctorReport {
 		}
 	}
 
-	// Check OpenCode — must have mcp.plan-ai specifically
-	ocDir := openCodeConfigDir()
+	// Check OpenCode — must have mcp.plan-ai (old format) or mcpServers.plan-ai (new format)
+	ocDir := openCodeConfigDir(inst.HomeDir)
 	if ocDir != "" {
 		candidates := []string{
 			filepath.Join(ocDir, "opencode.json"),
 			filepath.Join(ocDir, "opencode.jsonc"),
+			filepath.Join(ocDir, "config.json"),
 		}
 		for _, path := range candidates {
 			if _, err := os.Stat(path); err == nil {
 				r.OpenCodeConfigPath = path
-				if hasMCPPlanAI(path) {
+				if hasMCPPlanAI(path) || hasMCPPlanAINewFormat(path) {
 					r.OpenCodeValid = true
+					break
 				}
-				break
+			}
+		}
+		// If no candidate was valid, keep the path of the last existing one
+		if !r.OpenCodeValid {
+			for _, path := range candidates {
+				if _, err := os.Stat(path); err == nil {
+					r.OpenCodeConfigPath = path
+					break
+				}
 			}
 		}
 	}
@@ -328,6 +402,41 @@ func (inst *Installer) Doctor() *DoctorReport {
 	globalDB := config.GlobalDBPath(inst.HomeDir)
 	if _, err := os.Stat(globalDB); err == nil {
 		r.GlobalDBExists = true
+	}
+
+	// Issue detection: missing registered binary, duplicate MCP entries,
+	// stale config (state says installed but mcp-srv not in OpenCode).
+	if inst.State != nil {
+		if r.BinDir != "" {
+			bin := filepath.Join(r.BinDir, config.BinNameMCP)
+			if _, err := os.Stat(bin); err != nil {
+				r.Issues = append(r.Issues, DoctorIssue{
+					Severity: "warn",
+					Code:     "registered_binary_missing",
+					Message:  fmt.Sprintf("state records MCP binary at %s but it is not on disk", bin),
+				})
+			}
+		}
+	}
+
+	if r.OpenCodeConfigPath != "" {
+		// Duplicate detection: count plan-ai MCP entries in the opencode
+		// config (handles both legacy `mcp.plan-ai` and new `mcpServers.plan-ai`).
+		oldCount, newCount, _ := countPlanAIEntries(r.OpenCodeConfigPath)
+		if oldCount+newCount > 1 {
+			r.Issues = append(r.Issues, DoctorIssue{
+				Severity: "warn",
+				Code:     "duplicate_opencode_registration",
+				Message:  fmt.Sprintf("opencode config at %s has %d plan-ai entries (expected 1)", r.OpenCodeConfigPath, oldCount+newCount),
+			})
+		}
+		if r.StateExists && !r.OpenCodeValid {
+			r.Issues = append(r.Issues, DoctorIssue{
+				Severity: "warn",
+				Code:     "stale_state_opencode_missing",
+				Message:  fmt.Sprintf("state exists at %s but opencode config %s has no plan-ai entry", statePath, r.OpenCodeConfigPath),
+			})
+		}
 	}
 
 	return r
@@ -400,21 +509,27 @@ func timeNowUTC() string {
 }
 
 // openCodeConfigDir returns the OPENCODE_CONFIG_DIR env var or
-// the default ~/.config/opencode.
-func openCodeConfigDir() string {
+// the default ~/.config/opencode. When homeOverride is non-empty it
+// is used in place of os.UserHomeDir() so callers can stay consistent
+// with the installer's HomeDir (important for tests and sandboxed HOME).
+func openCodeConfigDir(homeOverride string) string {
 	if d := os.Getenv("OPENCODE_CONFIG_DIR"); d != "" {
 		return d
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	home := homeOverride
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
 	}
 	return filepath.Join(home, ".config", "opencode")
 }
 
 // backupOpenCodeConfig copies existing opencode config files to DataDir/backups/.
 func (inst *Installer) backupOpenCodeConfig() error {
-	ocDir := openCodeConfigDir()
+	ocDir := openCodeConfigDir(inst.HomeDir)
 	if ocDir == "" {
 		return nil
 	}
@@ -459,27 +574,31 @@ func (inst *Installer) backupOpenCodeConfig() error {
 // syncOpenCodeConfig generates or merges the Plan-AI MCP entry into the
 // OpenCode config. It uses the existing opencode.SetupService under the hood.
 func (inst *Installer) syncOpenCodeConfig(opts InstallOptions) error {
-	ocDir := openCodeConfigDir()
+	ocDir := openCodeConfigDir(inst.HomeDir)
 	if ocDir == "" {
 		return fmt.Errorf("cannot determine OpenCode config dir")
 	}
 
 	if !opts.AllowReal {
-		// Check if we'd be writing to real ~/.config/opencode
-		defaultDir := filepath.Join(inst.HomeDir, ".config", "opencode")
-		if ocDir == defaultDir {
-			return fmt.Errorf("refusing to write to %s without --allow-real-opencode flag", ocDir)
+		// Refuse to write to the user's actual ~/.config/opencode. We
+		// compare against the OS-level real home (getpwuid_r) so that a
+		// sandboxed or test HOME does not trip the safety check.
+		if u, err := user.Current(); err == nil {
+			realOCDir := filepath.Join(u.HomeDir, ".config", "opencode")
+			if ocDir == realOCDir {
+				return fmt.Errorf("refusing to write to %s without --allow-real-opencode flag", ocDir)
+			}
 		}
 	}
 
 	// Use the existing opencode.SetupService for the actual config generation
 	// We'll call a helper function defined in sync.go
-	return syncOpenCodeConfig(ocDir, opts.BinDir)
+	return syncOpenCodeConfig(inst.HomeDir, opts.BinDir)
 }
 
 // removePlanAIFromOpenCode strips Plan-AI entries from the OpenCode config.
 func (inst *Installer) removePlanAIFromOpenCode() error {
-	ocDir := openCodeConfigDir()
+	ocDir := openCodeConfigDir(inst.HomeDir)
 	if ocDir == "" {
 		return nil
 	}

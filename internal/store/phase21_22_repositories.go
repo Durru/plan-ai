@@ -358,3 +358,43 @@ func (r *ContextDeliveryRepository) ListDeliveries(projectID string, level strin
 	}
 	return deliveries, rows.Err()
 }
+
+// ContinuousStatusRepository provides access to continuous_status snapshots.
+type ContinuousStatusRepository struct{ db *sql.DB }
+
+// NewContinuousStatusRepository creates a new repository.
+func NewContinuousStatusRepository(db *sql.DB) *ContinuousStatusRepository {
+	return &ContinuousStatusRepository{db: db}
+}
+
+// ContinuousStatusRecord mirrors the continuous_status table row.
+type ContinuousStatusRecord struct {
+	ID             string `json:"id"`
+	ProjectID      string `json:"project_id"`
+	ActivePlan     string `json:"active_plan"`
+	ActivePhase    string `json:"active_phase"`
+	NextTask       string `json:"next_task"`
+	BlockedItems   string `json:"blocked_items"`
+	ApprovalsNeeded string `json:"approvals_needed"`
+	OutdatedPlans  string `json:"outdated_plans"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+// GetLatest returns the most recent status snapshot for a project.
+func (r *ContinuousStatusRepository) GetLatest(projectID string) (ContinuousStatusRecord, error) {
+	var rec ContinuousStatusRecord
+	err := r.db.QueryRow(
+		`SELECT id, project_id, active_plan, active_phase, next_task, COALESCE(blocked_items, '[]'), COALESCE(approvals_needed, '[]'), COALESCE(outdated_plans, '[]'), created_at, updated_at FROM continuous_status WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`,
+		projectID,
+	).Scan(&rec.ID, &rec.ProjectID, &rec.ActivePlan, &rec.ActivePhase, &rec.NextTask, &rec.BlockedItems, &rec.ApprovalsNeeded, &rec.OutdatedPlans, &rec.CreatedAt, &rec.UpdatedAt)
+	return rec, err
+}
+
+// Save creates or updates a status snapshot.
+func (r *ContinuousStatusRepository) Save(rec ContinuousStatusRecord) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.Exec(`INSERT INTO continuous_status (id, project_id, active_plan, active_phase, next_task, blocked_items, approvals_needed, outdated_plans, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		rec.ID, rec.ProjectID, rec.ActivePlan, rec.ActivePhase, rec.NextTask, rec.BlockedItems, rec.ApprovalsNeeded, rec.OutdatedPlans, now, now)
+	return err
+}

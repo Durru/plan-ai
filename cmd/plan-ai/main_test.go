@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	mcpserver "github.com/plan-ai/plan-ai/internal/mcp"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -38,7 +40,7 @@ func TestInitCommandCreatesProjectStoreAndRegistersKnownProject(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	output, err := executeCommand(t, home, project, "init")
+	output, err := executeCommand(t, home, project, "init", "--local")
 	if err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
@@ -70,7 +72,7 @@ func TestInitCommandWorksWithoutGlobalInstallation(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
 
-	output, err := executeCommand(t, home, project, "init")
+	output, err := executeCommand(t, home, project, "init", "--local")
 	if err != nil {
 		t.Fatalf("init without global install: %v\n%s", err, output)
 	}
@@ -87,7 +89,7 @@ func TestStatusCommandReportsGlobalAndProjectRoutes(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 
@@ -120,7 +122,7 @@ func TestDoctorDetectsSandboxOpenCodeConfigAfterSetup(t *testing.T) {
 	if output, err := executeCommandWithEnv(t, env, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommandWithEnv(t, env, project, "init"); err != nil {
+	if output, err := executeCommandWithEnv(t, env, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 	if output, err := executeCommandWithEnv(t, env, project, "setup", "opencode"); err != nil {
@@ -176,6 +178,34 @@ func TestBootstrapInitializesProjectAndOpenCodeIntegration(t *testing.T) {
 	}
 }
 
+func TestRootCommandHasMCPServeSubcommand(t *testing.T) {
+	cmd := newRootCommand()
+	mcpCmd, _, err := cmd.Find([]string{"mcp", "serve"})
+	if err != nil {
+		t.Fatalf("find mcp serve: %v", err)
+	}
+	if mcpCmd == nil || mcpCmd.Name() != "serve" {
+		t.Fatalf("expected mcp serve command, got %#v", mcpCmd)
+	}
+}
+
+func TestMCPServeRespectsExplicitMinimalMode(t *testing.T) {
+	srv, err := mcpserver.NewSDKServer(mcpserver.ToolContext{}, mcpserver.DefaultToolDependencies(), true)
+	if err != nil {
+		t.Fatalf("NewSDKServer: %v", err)
+	}
+	seen := map[string]bool{}
+	for name := range srv.ListTools() {
+		seen[name] = true
+	}
+	if !seen["plan_ai.project_status"] {
+		t.Fatalf("minimal tools missing project_status: %#v", seen)
+	}
+	if seen["plan_ai.create_master_plan"] {
+		t.Fatalf("minimal tools should not include create_master_plan: %#v", seen)
+	}
+}
+
 func TestStatusCommandReportsEmptyDomainCountsForInitializedProject(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
@@ -183,7 +213,7 @@ func TestStatusCommandReportsEmptyDomainCountsForInitializedProject(t *testing.T
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 	output, err := executeCommand(t, home, project, "status")
@@ -214,7 +244,7 @@ func TestDevSeedDomainAndListDomainUseSandboxProjectStore(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 	seedOutput, err := executeCommand(t, home, project, "dev", "seed-domain")
@@ -283,7 +313,7 @@ require (
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 	scanOutput, err := executeCommand(t, home, project, "scan")
@@ -329,7 +359,7 @@ func TestScanCommandIgnoresNodeModulesAndPlanAIDir(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 	if output, err := executeCommand(t, home, project, "scan"); err != nil {
@@ -375,7 +405,7 @@ func TestEnvironmentOverridesHomeAndProjectRoot(t *testing.T) {
 	if output, err := executeCommandWithEnv(t, env, realWorkdir, "install"); err != nil {
 		t.Fatalf("install with env overrides: %v\n%s", err, output)
 	}
-	if output, err := executeCommandWithEnv(t, env, realWorkdir, "init"); err != nil {
+	if output, err := executeCommandWithEnv(t, env, realWorkdir, "init", "--local"); err != nil {
 		t.Fatalf("init with env overrides: %v\n%s", err, output)
 	}
 	output, err := executeCommandWithEnv(t, env, realWorkdir, "status")
@@ -505,7 +535,7 @@ func TestKnowledgeAddRequiresTopic(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 	if output, err := executeCommand(t, home, project, "knowledge", "add"); err == nil {
@@ -519,8 +549,17 @@ func TestKnowledgeCommandsRequireInitializedProject(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "knowledge", "list"); err == nil {
-		t.Fatalf("expected error before init, got:\n%s", output)
+	// Phase 1: the resolver lazily provisions an external project store on
+	// first access, so `knowledge list` on a fresh project returns the empty
+	// state instead of an error. The semantic guarantee is now "an external
+	// project store is auto-created and migrations are applied" rather than
+	// "command fails before init."
+	out, err := executeCommand(t, home, project, "knowledge", "list")
+	if err != nil {
+		t.Fatalf("knowledge list on fresh project: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "No knowledge objects yet.") {
+		t.Fatalf("expected empty knowledge state, got:\n%s", out)
 	}
 }
 
@@ -580,7 +619,15 @@ func extractKnowledgeID(t *testing.T, output string) string {
 
 func executeCommand(t *testing.T, home, workdir string, args ...string) (string, error) {
 	t.Helper()
-	return executeCommandWithEnv(t, map[string]string{"HOME": home}, workdir, args...)
+	// Always point the OpenCode config at a sandbox under the test HOME so
+	// the installer's refuse-to-write-real-config safety check does not
+	// trip in tests. Callers that want to drive OPENCODE_CONFIG_DIR
+	// themselves should use executeCommandWithEnv.
+	ocDir := filepath.Join(home, ".config", "opencode")
+	return executeCommandWithEnv(t, map[string]string{
+		"HOME":                home,
+		"OPENCODE_CONFIG_DIR": ocDir,
+	}, workdir, args...)
 }
 
 func executeCommandWithEnv(t *testing.T, env map[string]string, workdir string, args ...string) (string, error) {
@@ -643,7 +690,7 @@ func TestIntentV3Discover(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 
@@ -666,7 +713,7 @@ func TestIntentV3CreateListShowApprove(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 
@@ -745,7 +792,7 @@ func TestIntentV3ListEmpty(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 
@@ -765,7 +812,7 @@ func TestConfidenceEvaluateIntent(t *testing.T) {
 	if output, err := executeCommand(t, home, project, "install"); err != nil {
 		t.Fatalf("install: %v\n%s", err, output)
 	}
-	if output, err := executeCommand(t, home, project, "init"); err != nil {
+	if output, err := executeCommand(t, home, project, "init", "--local"); err != nil {
 		t.Fatalf("init: %v\n%s", err, output)
 	}
 

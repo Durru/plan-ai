@@ -61,13 +61,11 @@ ssh $SSH_OPTS "$USER@$HOST" bash -s << 'REMOTE'
   # Build
   printf 'Building...\n'
   go build -o "$BIN_DIR/plan-ai" ./cmd/plan-ai
-  go build -o "$BIN_DIR/plan-ai-mcp-server" ./cmd/mcp-server
-  chmod 0755 "$BIN_DIR/plan-ai" "$BIN_DIR/plan-ai-mcp-server"
+  chmod 0755 "$BIN_DIR/plan-ai"
 
   # Verify
   INSTALLED="$("$BIN_DIR/plan-ai" --version 2>/dev/null || "$BIN_DIR/plan-ai" version 2>/dev/null || true)"
   printf 'Installed: %s/plan-ai\n' "$BIN_DIR"
-  printf 'Installed: %s/plan-ai-mcp-server\n' "$BIN_DIR"
   printf 'Version: %s\n' "${INSTALLED:-plan-ai}"
 
   # Sync install state (preserves existing config)

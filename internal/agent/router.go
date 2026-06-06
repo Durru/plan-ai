@@ -55,6 +55,14 @@ func (r *DefaultRouter) contextKeys(intent IntentKind) []string {
 		return []string{"research", "knowledge"}
 	case IntentProjectStatus, IntentNextTask:
 		return []string{"plans", "phases", "tasks", "decisions"}
+	case IntentAnalyzeProject:
+		return []string{"plans", "phases", "tasks", "decisions", "visions", "knowledge", "approved"}
+	case IntentCreateProduct:
+		return []string{"visions", "approved", "knowledge"}
+	case IntentDatabasePlan:
+		return []string{"knowledge", "decisions", "plans"}
+	case IntentImpactAnalysis:
+		return []string{"plans", "tasks", "decisions", "validations"}
 	case IntentChangeRequest:
 		return []string{"plans", "decisions", "tasks"}
 	case IntentImplementationHelp:

@@ -15,11 +15,9 @@ cd plan-ai
 
 # Build the binary
 go build -o plan-ai ./cmd/plan-ai
-go build -o plan-ai-mcp-server ./cmd/mcp-server
 
 # (Optional) Install to PATH
 sudo mv plan-ai /usr/local/bin/
-sudo mv plan-ai-mcp-server /usr/local/bin/
 ```
 
 ## Quick start

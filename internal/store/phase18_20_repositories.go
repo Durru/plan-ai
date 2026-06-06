@@ -151,6 +151,13 @@ func (r *SnapshotV2Repository) Create(snap SnapshotV2Record) (SnapshotV2Record, 
 	return snap, nil
 }
 
+func (r *SnapshotV2Repository) GetByID(id string) (SnapshotV2Record, error) {
+	var s SnapshotV2Record
+	err := r.db.QueryRow(`SELECT id, project_id, reason, entity_snapshot, created_at FROM snapshots_v2 WHERE id = ?`, id).
+		Scan(&s.ID, &s.ProjectID, &s.Reason, &s.EntitySnapshot, &s.CreatedAt)
+	return s, err
+}
+
 func (r *SnapshotV2Repository) ListByProject(projectID string, limit int) ([]SnapshotV2Record, error) {
 	if limit <= 0 {
 		limit = 50

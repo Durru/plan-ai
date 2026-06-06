@@ -99,6 +99,22 @@ WHERE LOWER(topic) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(content) LIKE ?
 ORDER BY created_at, id`, knowledgeColumns), like, like, like)
 }
 
+// SearchKnowledgeFTS searches knowledge objects using FTS5-ranked full-text
+// search across topic, summary, and content. It sanitizes the query to
+// prevent FTS5 syntax errors from special characters. An empty query
+// falls back to List().
+func (r KnowledgeRepository) SearchKnowledgeFTS(query string, limit int) ([]domain.KnowledgeObject, error) {
+	safe := sanitizeFTS5(query)
+	if safe == "" {
+		return r.List()
+	}
+	return r.queryObjects(fmt.Sprintf(`SELECT %s FROM knowledge_objects ko
+JOIN knowledge_objects_fts fts ON ko.rowid = fts.rowid
+WHERE knowledge_objects_fts MATCH ?
+ORDER BY rank
+LIMIT ?`, knowledgeColumns), safe, limit)
+}
+
 func (r KnowledgeRepository) queryObjects(query string, args ...any) ([]domain.KnowledgeObject, error) {
 	rows, err := r.db.Query(query, args...)
 	if err != nil {

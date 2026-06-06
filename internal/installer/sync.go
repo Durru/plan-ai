@@ -5,50 +5,47 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/plan-ai/plan-ai/internal/opencode"
 )
 
 // opencodeSchemaURL is the schema URL for OpenCode config files.
 const opencodeSchemaURL = "https://opencode.ai/config.json"
 
 // invalidOpenCodeKeys are keys that MUST NOT appear in the final opencode.json.
-// If present in an existing config, they are stripped and the original is backed up.
-var invalidOpenCodeKeys = map[string]bool{
-	"providers":     true,
-	"provider.list": true,
-	"app.agents":    true,
+// IMPORTANT: only strip keys that Plan-AI owns. OpenCode's own config keys
+// (providers, provider.list, app.agents, config.get) are legitimate and must
+// be preserved.
+var invalidOpenCodeKeys = map[string]bool{}
+
+// syncOpenCodeConfig is a thin wrapper that delegates to opencode.SetupMCPConfig.
+// It derives homeRoot from ocDir by going two levels up (ocDir = homeRoot/.config/opencode).
+// The backup path produced by the atomic write is discarded here; callers that
+// need it (e.g. CLI commands) should call opencode.SetupMCPConfig directly.
+func syncOpenCodeConfig(homeRoot, binDir string) error {
+	_, err := opencode.SetupMCPConfig(homeRoot, binDir)
+	return err
 }
 
-// syncOpenCodeConfig generates or merges the Plan-AI MCP entry into the
-// OpenCode config file (opencode.json). It writes directly to opencode.json
-// under the mcp.plan-ai key and does NOT depend on mcp-registry.json.
-//
-// Strategy:
-//  1. Read existing opencode.json (handle JSONC comments)
-//  2. Strip invalid keys (providers, provider.list, app.agents)
-//  3. Ensure $schema is present
-//  4. Merge mcp.plan-ai with the server configuration
-//  5. Write back as clean JSON
-func syncOpenCodeConfig(ocDir, binDir string) error {
+// generateOpenCodeConfigContent builds the opencode.json content in memory.
+// It reads and merges with any existing config, strips invalid keys,
+// and returns the final JSON bytes without writing to disk.
+func generateOpenCodeConfigContent(ocDir, binDir string) ([]byte, error) {
 	configPath := filepath.Join(ocDir, "opencode.json")
-	if err := os.MkdirAll(ocDir, 0755); err != nil {
-		return fmt.Errorf("mkdir opencode dir: %w", err)
-	}
 
 	// Determine project root for env
 	projectRoot := os.Getenv("PLAN_AI_PROJECT_ROOT")
 	if projectRoot == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("getwd: %w", err)
+			return nil, fmt.Errorf("getwd: %w", err)
 		}
 		projectRoot = cwd
 	}
 
-	// Determine MCP command
-	mcpCmd := "plan-ai-mcp-server"
-	if binDir != "" {
-		mcpCmd = filepath.Join(binDir, binNameMCP)
-	}
+	mcpCmd := planAIMCPCommand(binDir)
 
 	// Read existing config if present
 	var cfg map[string]any
@@ -69,7 +66,6 @@ func syncOpenCodeConfig(ocDir, binDir string) error {
 	}
 
 	didStrip := false
-	// Strip invalid keys
 	for key := range invalidOpenCodeKeys {
 		if _, exists := cfg[key]; exists {
 			delete(cfg, key)
@@ -77,7 +73,6 @@ func syncOpenCodeConfig(ocDir, binDir string) error {
 		}
 	}
 
-	// If we stripped invalid keys from an existing config, back up the original
 	if didStrip && configExists {
 		backupPath := configPath + ".stripped." + timeNowFilename()
 		data, _ := os.ReadFile(configPath)
@@ -86,12 +81,10 @@ func syncOpenCodeConfig(ocDir, binDir string) error {
 		}
 	}
 
-	// Ensure $schema
 	if _, ok := cfg["$schema"]; !ok {
 		cfg["$schema"] = opencodeSchemaURL
 	}
 
-	// Ensure mcp section exists
 	mcpRaw, ok := cfg["mcp"]
 	if !ok || mcpRaw == nil {
 		mcpRaw = make(map[string]any)
@@ -103,23 +96,24 @@ func syncOpenCodeConfig(ocDir, binDir string) error {
 		cfg["mcp"] = mcpSection
 	}
 
-	// Set mcp.plan-ai
 	mcpSection["plan-ai"] = map[string]any{
 		"type":    "local",
 		"enabled": true,
-		"command": []string{mcpCmd},
+		"command": mcpCmd,
 		"env": map[string]string{
 			"PLAN_AI_PROJECT_ROOT": projectRoot,
-			"PLAN_AI_MCP_MINIMAL":  "true",
 		},
 	}
 
 	out, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
+		return nil, fmt.Errorf("marshal config: %w", err)
 	}
+	return out, nil
+}
 
-	return os.WriteFile(configPath, out, 0644)
+func planAIMCPCommand(binDir string) []string {
+	return config.MCPCommand(binDir)
 }
 
 // removePlanAIFromOpenCodeConfig removes the Plan-AI MCP entry from the
@@ -128,6 +122,7 @@ func removePlanAIFromOpenCodeConfig(ocDir string) error {
 	candidates := []string{
 		filepath.Join(ocDir, "opencode.json"),
 		filepath.Join(ocDir, "opencode.jsonc"),
+		filepath.Join(ocDir, "config.json"),
 	}
 
 	for _, path := range candidates {
@@ -144,7 +139,7 @@ func removePlanAIFromOpenCodeConfig(ocDir string) error {
 			continue // skip unparseable
 		}
 
-		// Remove plan-ai from MCP
+		// Remove plan-ai from MCP (legacy format)
 		if mcpRaw, ok := cfg["mcp"].(map[string]any); ok {
 			delete(mcpRaw, "plan-ai")
 			if len(mcpRaw) == 0 {
@@ -154,12 +149,22 @@ func removePlanAIFromOpenCodeConfig(ocDir string) error {
 			}
 		}
 
+		// Remove plan-ai from MCP (new format)
+		if mcpRaw, ok := cfg["mcpServers"].(map[string]any); ok {
+			delete(mcpRaw, "plan-ai")
+			if len(mcpRaw) == 0 {
+				delete(cfg, "mcpServers")
+			} else {
+				cfg["mcpServers"] = mcpRaw
+			}
+		}
+
 		// Write back
 		out, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal config: %w", err)
 		}
-		if err := os.WriteFile(path, out, 0644); err != nil {
+		if err := writeFileAtomically(path, out, 0644); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 	}
@@ -239,6 +244,60 @@ func hasMCPPlanAI(path string) bool {
 		return false
 	}
 	mcpRaw, ok := cfg["mcp"]
+	if !ok {
+		return false
+	}
+	mcpSection, ok := mcpRaw.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = mcpSection["plan-ai"]
+	return ok
+}
+
+// countPlanAIEntries returns the number of plan-ai* MCP entries in the
+// opencode config (old format, new format). Used by Doctor to detect
+// duplicate registrations left behind by failed updates.
+func countPlanAIEntries(path string) (oldCount, newCount int, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(cleanJSONCComments(data), &cfg); err != nil {
+		return 0, 0, err
+	}
+	if mcpRaw, ok := cfg["mcp"].(map[string]any); ok {
+		oldCount = countKeysWithPrefix(mcpRaw, "plan-ai")
+	}
+	if mcpRaw, ok := cfg["mcpServers"].(map[string]any); ok {
+		newCount = countKeysWithPrefix(mcpRaw, "plan-ai")
+	}
+	return oldCount, newCount, nil
+}
+
+// countKeysWithPrefix returns the number of map keys that start with prefix.
+func countKeysWithPrefix(m map[string]any, prefix string) int {
+	n := 0
+	for k := range m {
+		if strings.HasPrefix(k, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+// hasMCPPlanAINewFormat checks whether the config at path contains mcpServers.plan-ai.
+func hasMCPPlanAINewFormat(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(cleanJSONCComments(data), &cfg); err != nil {
+		return false
+	}
+	mcpRaw, ok := cfg["mcpServers"]
 	if !ok {
 		return false
 	}

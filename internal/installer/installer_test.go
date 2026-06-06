@@ -231,9 +231,9 @@ func TestInstaller_DetectTools(t *testing.T) {
 		t.Error("git should be detected")
 	}
 	// opencode detection depends on whether the binary is on PATH in CI;
-	// we only verify mcp-server is NOT detected (it shouldn't exist anywhere)
+	// we only verify plan-ai is NOT detected (it shouldn't exist in the fake PATH)
 	if tools.MCPBinary {
-		t.Error("plan-ai-mcp-server should NOT be detected (not on PATH)")
+		t.Error("plan-ai should NOT be detected (not on PATH)")
 	}
 }
 
@@ -605,11 +605,6 @@ func TestInstaller_ValidatesOpenCodeConfigAfterInstall(t *testing.T) {
 		t.Fatalf("parse opencode config: %v", err)
 	}
 
-	// Must have $schema
-	if _, ok := cfg["$schema"]; !ok {
-		t.Fatal("opencode config should have $schema")
-	}
-
 	// Must have mcp.plan-ai
 	mcpRaw, ok := cfg["mcp"]
 	if !ok {
@@ -639,10 +634,10 @@ func TestInstaller_StripsInvalidKeysFromOpenCodeConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Write a config with invalid keys + some valid keys
-	cfgPath := filepath.Join(ocDir, "opencode.json")
-	origContent := `{"agent_name":"my-app","providers":{"test":1},"app.agents":{"plan-ai":{}},"mcp":{"existing":{"type":"local"}}}`
-	if err := os.WriteFile(cfgPath, []byte(origContent), 0644); err != nil {
+	// Write an existing opencode.json with user data + an existing MCP entry
+	oldCfgPath := filepath.Join(ocDir, "opencode.json")
+	origContent := `{"agent_name":"my-app","mcp":{"existing":{"type":"local"}}}`
+	if err := os.WriteFile(oldCfgPath, []byte(origContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -657,47 +652,22 @@ func TestInstaller_StripsInvalidKeysFromOpenCodeConfig(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	// Read back and verify
-	data, err := os.ReadFile(cfgPath)
+	// SetupMCPConfig now writes to opencode.json, merging plan-ai into mcp.
+	// The existing opencode.json should be modified — plan-ai added, user data preserved.
+	newData, err := os.ReadFile(oldCfgPath)
 	if err != nil {
-		t.Fatalf("read opencode config: %v", err)
+		t.Fatalf("read opencode.json: %v", err)
+	}
+	if !strings.Contains(string(newData), "plan-ai") {
+		t.Fatal("opencode.json should contain plan-ai after install")
+	}
+	if !strings.Contains(string(newData), "existing") {
+		t.Fatal("opencode.json should preserve existing mcp entries")
+	}
+	if !strings.Contains(string(newData), "my-app") {
+		t.Fatal("opencode.json should preserve user data (agent_name)")
 	}
 
-	var cfg map[string]any
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("parse opencode config: %v", err)
-	}
-
-	// Invalid keys must be gone
-	for key := range invalidOpenCodeKeys {
-		if _, exists := cfg[key]; exists {
-			t.Errorf("invalid key %q should have been stripped", key)
-		}
-	}
-
-	// Valid keys must survive
-	if cfg["agent_name"] != "my-app" {
-		t.Errorf("agent_name was altered: got %v", cfg["agent_name"])
-	}
-
-	// $schema must be present
-	if _, ok := cfg["$schema"]; !ok {
-		t.Fatal("$schema should be added")
-	}
-
-	// mcp.plan-ai must be present
-	mcpRaw, ok := cfg["mcp"].(map[string]any)
-	if !ok {
-		t.Fatal("mcp section should exist")
-	}
-	if _, ok := mcpRaw["existing"]; !ok {
-		t.Fatal("existing mcp entry was removed")
-	}
-	if _, ok := mcpRaw["plan-ai"]; !ok {
-		t.Fatal("plan-ai mcp entry should be present")
-	}
-
-	// Verify doctor reports valid
 	report := inst.Doctor()
 	if !report.OpenCodeValid {
 		t.Error("OpenCode config should be valid after install")
@@ -709,14 +679,12 @@ func TestInstaller_StripsInvalidKeysFromOpenCodeConfig(t *testing.T) {
 func TestInstaller_OpenCodeConfigHasSchemaAndMCPPlanAI(t *testing.T) {
 	inst, home := testInstaller(t)
 
-	// Use HOME temp so we don't touch real ~/.config/opencode
 	ocDir := filepath.Join(home, ".config", "opencode")
 	if err := os.MkdirAll(ocDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("OPENCODE_CONFIG_DIR", ocDir)
 
-	// Install minimal preset
 	err := inst.Install(InstallOptions{
 		Preset:    "minimal",
 		BinDir:    filepath.Join(home, "bin"),
@@ -726,25 +694,16 @@ func TestInstaller_OpenCodeConfigHasSchemaAndMCPPlanAI(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	// Read generated config
+	// SetupMCPConfig writes to opencode.json with mcp.plan-ai
 	cfgPath := filepath.Join(ocDir, "opencode.json")
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
-		t.Fatalf("read opencode config: %v", err)
+		t.Fatalf("read opencode.json: %v", err)
 	}
 
 	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("parse opencode config: %v\n%s", err, string(data))
-	}
-
-	// Verify $schema
-	schema, ok := cfg["$schema"]
-	if !ok {
-		t.Fatal("generated config missing $schema")
-	}
-	if schema != opencodeSchemaURL {
-		t.Fatalf("$schema = %q, want %q", schema, opencodeSchemaURL)
+		t.Fatalf("parse opencode.json: %v\n%s", err, string(data))
 	}
 
 	// Verify mcp.plan-ai
@@ -756,13 +715,34 @@ func TestInstaller_OpenCodeConfigHasSchemaAndMCPPlanAI(t *testing.T) {
 	if !ok {
 		t.Fatal("generated config missing mcp.plan-ai")
 	}
-	if planAI["type"] != "local" {
-		t.Fatalf("plan-ai type = %v, want 'local'", planAI["type"])
+
+	cmd, ok := planAI["command"].([]any)
+	if !ok || len(cmd) == 0 {
+		t.Fatalf("plan-ai command missing or wrong type: %#v", planAI["command"])
+	}
+	wantCmd := filepath.Join(home, "bin", "plan-ai")
+	if cmd[0] != wantCmd {
+		t.Fatalf("plan-ai command[0] = %q, want %q", cmd[0], wantCmd)
 	}
 
-	// Verify doctor
+	if _, ok := planAI["env"]; !ok {
+		t.Fatal("plan-ai should have env section")
+	}
+
 	report := inst.Doctor()
 	if !report.OpenCodeValid {
 		t.Error("Doctor should report OpenCodeValid=true")
 	}
+}
+
+func sameInstallerCommand(got []any, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }

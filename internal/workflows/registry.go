@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 type Registry struct {
 	repo      RunRepository
+	db        *sql.DB
 	workflows map[WorkflowType]Workflow
 	now       func() time.Time
 }
@@ -19,6 +21,12 @@ func NewRegistry(repo RunRepository) *Registry {
 	_ = r.RegisterWorkflow(ResearchWorkflow())
 	_ = r.RegisterWorkflow(PlanningWorkflow())
 	_ = r.RegisterWorkflow(ApprovalWorkflow())
+	return r
+}
+
+func NewRegistryWithDB(repo RunRepository, db *sql.DB) *Registry {
+	r := NewRegistry(repo)
+	r.db = db
 	return r
 }
 
@@ -42,15 +50,40 @@ func (r *Registry) GetWorkflow(typ WorkflowType) (Workflow, error) {
 }
 
 func (r *Registry) ExecuteWorkflow(typ WorkflowType) (WorkflowRun, error) {
-	if _, err := r.GetWorkflow(typ); err != nil {
+	wf, err := r.GetWorkflow(typ)
+	if err != nil {
 		return WorkflowRun{}, err
 	}
 	now := r.now()
-	run := WorkflowRun{ID: domain.NewID("workflow"), WorkflowType: typ, Status: StatusRunning, StartedAt: now}
+
+	steps := make([]Step, len(wf.Steps))
+	for i, name := range wf.Steps {
+		steps[i] = Step{Name: name, Status: StatusRunning}
+	}
+
+	run := WorkflowRun{
+		ID:           domain.NewID("workflow"),
+		WorkflowType: typ,
+		Status:       StatusRunning,
+		Steps:        steps,
+		StartedAt:    now,
+	}
 	created, err := r.repo.CreateWorkflowRun(run)
 	if err != nil {
 		return WorkflowRun{}, err
 	}
+
+	if r.db != nil {
+		if err := ExecuteSteps(&created, r.db); err != nil {
+			created.Status = StatusFailed
+			created.FinishedAt = r.now()
+			return r.repo.UpdateWorkflowRun(created)
+		}
+		created.Status = StatusCompleted
+		created.FinishedAt = r.now()
+		return r.repo.UpdateWorkflowRun(created)
+	}
+
 	created.Status = StatusCompleted
 	created.FinishedAt = r.now()
 	return r.repo.UpdateWorkflowRun(created)

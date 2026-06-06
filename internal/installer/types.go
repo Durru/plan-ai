@@ -86,4 +86,12 @@ type DoctorReport struct {
 	Preset              string
 	GlobalDBExists      bool
 	ProjectDBExists     bool
+	Issues              []DoctorIssue
+}
+
+// DoctorIssue is a single problem detected by Doctor.
+type DoctorIssue struct {
+	Severity string // "info" | "warn" | "error"
+	Code     string
+	Message  string
 }

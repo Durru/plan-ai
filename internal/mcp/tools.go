@@ -1,11 +1,15 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
+
+	mcpsdk "github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
-// RegisterDefaultTools registers all standard Plan-AI MCP tools.
-func RegisterDefaultTools(s *Server, deps *ToolDependencies) error {
+// allToolDefs returns all standard Plan-AI MCP tool definitions.
+func allToolDefs(deps *ToolDependencies) []ToolDefinition {
 	tools := []ToolDefinition{
 		{
 			Name:        "plan_ai.init_project",
@@ -526,10 +530,36 @@ func RegisterDefaultTools(s *Server, deps *ToolDependencies) error {
 	tools = append(tools, phase29Tools...)
 	tools = append(tools, phase51Tools...)
 
-	for _, tool := range tools {
+	return tools
+}
+
+// RegisterDefaultTools registers all standard Plan-AI MCP tools into a legacy Server.
+func RegisterDefaultTools(s *Server, deps *ToolDependencies) error {
+	for _, tool := range allToolDefs(deps) {
 		if err := s.RegisterTool(tool); err != nil {
 			return fmt.Errorf("register tool %s: %w", tool.Name, err)
 		}
+	}
+	return nil
+}
+
+// RegisterSDKDefaultTools registers all tools directly into an mcpserver.MCPServer
+// using SDK-native types. This is the production registration path.
+func RegisterSDKDefaultTools(srv *mcpserver.MCPServer, deps *ToolDependencies, minimal bool) error {
+	adapt := sdkHandlerAdapter()
+	for _, td := range allToolDefs(deps) {
+		if minimal && !MinimalToolNames[td.Name] {
+			continue
+		}
+		schema, err := json.Marshal(td.Schema)
+		if err != nil {
+			return fmt.Errorf("marshal schema for %s: %w", td.Name, err)
+		}
+		td := td
+		srv.AddTool(
+			mcpsdk.NewToolWithRawSchema(td.Name, td.Description, schema),
+			adapt(td.Handler),
+		)
 	}
 	return nil
 }

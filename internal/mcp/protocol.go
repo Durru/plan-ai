@@ -28,7 +28,9 @@ type jsonRPCError struct {
 	Message string `json:"message"`
 }
 
-// ServeStdio serves the MCP JSON-RPC protocol over an LSP-style stdio stream.
+// Deprecated: ServeStdio implements the legacy custom JSON-RPC transport over
+// LSP-style stdio framing. The primary transport now uses mark3labs/mcp-go via
+// ServeSDKStdio. This function is retained for test compatibility only.
 func ServeStdio(r io.Reader, w io.Writer, s *Server) error {
 	br := bufio.NewReader(r)
 	for {

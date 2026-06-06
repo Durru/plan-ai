@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/plan-ai/plan-ai/internal/atomicfile"
+	"github.com/plan-ai/plan-ai/internal/config"
 )
 
 // SetupResult holds paths to all generated OpenCode integration artifacts.
@@ -201,7 +204,7 @@ func (s *SetupService) ensureOpenCodeConfig(opencodeDir, projectRoot string) (st
 			"plan-ai": map[string]any{
 				"type":    "local",
 				"enabled": true,
-				"command": []string{"plan-ai-mcp-server"},
+				"command": planAIMCPCommand(),
 				"env": map[string]string{
 					"PLAN_AI_PROJECT_ROOT": projectRoot,
 				},
@@ -218,7 +221,7 @@ func (s *SetupService) ensureOpenCodeConfig(opencodeDir, projectRoot string) (st
 	if err != nil {
 		return "", fmt.Errorf("marshal opencode config: %w", err)
 	}
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if _, err := atomicfile.WriteFileWithBackup(configPath, data, 0644, "pre-merge"); err != nil {
 		return "", fmt.Errorf("write opencode config: %w", err)
 	}
 
@@ -241,7 +244,7 @@ func (s *SetupService) mergePlanAIIntoOpenCodeConfig(path, projectRoot string) e
 	mcpRaw["plan-ai"] = map[string]any{
 		"type":    "local",
 		"enabled": true,
-		"command": []string{"plan-ai-mcp-server"},
+		"command": planAIMCPCommand(),
 		"env": map[string]string{
 			"PLAN_AI_PROJECT_ROOT": projectRoot,
 		},
@@ -260,7 +263,7 @@ func (s *SetupService) mergePlanAIIntoOpenCodeConfig(path, projectRoot string) e
 	if err != nil {
 		return fmt.Errorf("marshal merged opencode config: %w", err)
 	}
-	if err := os.WriteFile(path, merged, 0644); err != nil {
+	if _, err := atomicfile.WriteFileWithBackup(path, merged, 0644, "pre-merge"); err != nil {
 		return fmt.Errorf("write merged opencode config: %w", err)
 	}
 	return nil
@@ -327,7 +330,7 @@ func (s *SetupService) writeMCPRegistry(opencodeDir string) (string, error) {
 		Name:    "plan-ai",
 		Type:    "local",
 		Enabled: true,
-		Command: []string{"plan-ai-mcp-server"},
+		Command: planAIMCPCommand(),
 		Tools:   defaultMCPToolEntries(),
 	}
 
@@ -345,6 +348,10 @@ func (s *SetupService) writeMCPRegistry(opencodeDir string) (string, error) {
 	}
 
 	return path, nil
+}
+
+func planAIMCPCommand() []string {
+	return config.MCPCommand("")
 }
 
 func defaultMCPToolEntries() []setupMCPToolEntry {
@@ -508,6 +515,80 @@ func (s *SetupService) writeSyncMarker(projectRoot, opencodeDir string, result *
 	}
 
 	return path, nil
+}
+
+// SetupMCPConfig writes the Plan-AI MCP server entry to OpenCode's
+// opencode.json (the file OpenCode reads at startup). It merges into
+// the existing "mcp" section, preserving all other keys.
+//
+// The target directory is resolved as follows:
+//  1. If $OPENCODE_CONFIG_DIR is set, it is used verbatim.
+//  2. Otherwise, <homeRoot>/.config/opencode is used.
+//
+// A backup is created before writing, and the write is atomic.
+// This implements ADR 0021 (Safe OpenCode Auto-Configuration).
+func SetupMCPConfig(homeRoot string, binDir string) (backupPath string, err error) {
+	configDir := opencodeConfigDir(homeRoot)
+
+	// Write to opencode.json (the file OpenCode reads at startup).
+	// config.json is a legacy/deprecated path that OpenCode 1.16+
+	// rejects as "Unrecognized key: mcpServers".
+	configPath := filepath.Join(configDir, "opencode.json")
+
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir opencode config dir: %w", err)
+	}
+
+	cfg := readExistingConfigJSON(configPath)
+
+	mcp, ok := cfg["mcp"].(map[string]any)
+	if !ok || mcp == nil {
+		mcp = map[string]any{}
+	}
+	mcp["plan-ai"] = map[string]any{
+		"type":    "local",
+		"enabled": true,
+		"command": config.MCPCommand(binDir),
+		"env": map[string]string{
+			"PLAN_AI_PROJECT_ROOT": os.Getenv("PLAN_AI_PROJECT_ROOT"),
+		},
+	}
+	cfg["mcp"] = mcp
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal opencode config: %w", err)
+	}
+
+	backupPath, err = atomicfile.WriteFileWithBackup(configPath, data, 0644, "pre-mcp-write")
+	if err != nil {
+		return backupPath, fmt.Errorf("write opencode config: %w", err)
+	}
+
+	return backupPath, nil
+}
+
+// readExistingConfigJSON reads and parses an existing config.json, or
+// returns an empty map if the file doesn't exist or is unparseable.
+func readExistingConfigJSON(path string) map[string]any {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return map[string]any{}
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(stripJSONCComments(data), &cfg); err != nil {
+		return map[string]any{}
+	}
+	return cfg
+}
+
+// opencodeConfigDir resolves the OpenCode config directory from
+// $OPENCODE_CONFIG_DIR (if set) or falls back to <homeRoot>/.config/opencode.
+func opencodeConfigDir(homeRoot string) string {
+	if d := os.Getenv("OPENCODE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	return filepath.Join(homeRoot, ".config", "opencode")
 }
 
 // DetectOpenCodeConfig is a convenience wrapper that uses the existing Detector

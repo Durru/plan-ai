@@ -23,7 +23,7 @@ func newSetupUpdateVpsCommand() *cobra.Command {
 		Use:   "update-vps",
 		Short: "Update Plan-AI on a remote VPS via SSH.",
 		Long: `SSH into a remote VPS, pull the latest Plan-AI code from GitHub,
-build, and install the plan-ai and plan-ai-mcp-server binaries.
+build, and install the plan-ai binary.
 
 Requires ssh on PATH. The VPS must have git and go installed.`,
 		Example: `  plan-ai setup update-vps --host example.com
@@ -113,7 +113,7 @@ func newUpdateVpsCommand() *cobra.Command {
 		Use:   "update-vps",
 		Short: "Update Plan-AI on a remote VPS via SSH.",
 		Long: `SSH into a remote VPS, pull the latest Plan-AI code from GitHub,
-build, and install the plan-ai and plan-ai-mcp-server binaries.
+build, and install the plan-ai binary.
 
 Requires ssh on PATH. The VPS must have git and go installed.`,
 		Example: `  plan-ai update-vps --host example.com
@@ -147,12 +147,10 @@ cd "${PLAN_AI_DIR}"
 
 printf 'Building...\n'
 go build -o "${BIN_DIR}/plan-ai" ./cmd/plan-ai
-go build -o "${BIN_DIR}/plan-ai-mcp-server" ./cmd/mcp-server
-chmod 0755 "${BIN_DIR}/plan-ai" "${BIN_DIR}/plan-ai-mcp-server"
+chmod 0755 "${BIN_DIR}/plan-ai"
 
 INSTALLED="$("${BIN_DIR}/plan-ai" --version 2>/dev/null || "${BIN_DIR}/plan-ai" version 2>/dev/null || true)"
 printf 'Installed: %s/plan-ai\n' "${BIN_DIR}"
-printf 'Installed: %s/plan-ai-mcp-server\n' "${BIN_DIR}"
 printf 'Version: %s\n' "${INSTALLED:-plan-ai}"
 
 "${BIN_DIR}/plan-ai" install 2>/dev/null || true

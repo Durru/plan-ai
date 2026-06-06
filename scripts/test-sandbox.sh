@@ -461,7 +461,7 @@ if [[ -f "$PROJECT_DB" ]]; then
 	done
 fi
 
-MCP_TOOLS_OUTPUT=$(go run ./cmd/mcp-server list-tools)
+MCP_TOOLS_OUTPUT=$(go run ./cmd/plan-ai mcp list-tools)
 for expected_tool in \
   'plan_ai.agent_message' \
   'plan_ai.agent_status' \

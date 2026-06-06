@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type GlobalConfig struct {
@@ -19,8 +20,38 @@ type ProjectConfig struct {
 	ProjectName  string         `json:"project_name"`
 	ProjectRoot  string         `json:"project_root"`
 	ProjectDB    string         `json:"project_db"`
+	Mode         string         `json:"mode"`
 	CreatedAt    string         `json:"created_at"`
 	Integrations map[string]any `json:"integrations"`
+}
+
+// ProjectModeExternal stores project data under the global Plan-AI home
+// (default). ProjectModeLocal stores project data inside the project's
+// working tree at <root>/.plan-ai (opt-in via `plan-ai init --local`).
+const (
+	ProjectModeExternal = "external"
+	ProjectModeLocal    = "local"
+)
+
+// ProjectSlug converts an absolute project root into a filesystem-safe slug
+// used for the directory name under ~/.plan-ai/projects/. The slug is stable
+// for any given root path so the same project always resolves to the same
+// external directory.
+func ProjectSlug(rootPath string) string {
+	cleaned := filepath.Clean(rootPath)
+	if cleaned == string(filepath.Separator) || cleaned == "." {
+		return "project_root"
+	}
+	slug := strings.ReplaceAll(cleaned, string(filepath.Separator), "__")
+	slug = strings.ReplaceAll(slug, ":", "_")
+	for strings.Contains(slug, "__") {
+		slug = strings.ReplaceAll(slug, "__", "_")
+	}
+	slug = strings.Trim(slug, "_")
+	if slug == "" {
+		return "project_root"
+	}
+	return "project_" + slug
 }
 
 func GlobalDir(homeDir string) string {
@@ -89,6 +120,59 @@ func ProjectLocksDir(projectDir string) string {
 
 func ProjectBackupsDir(projectDir string) string {
 	return filepath.Join(ProjectDir(projectDir), "backups")
+}
+
+// GlobalProjectsDir is the parent directory under the global Plan-AI home
+// that hosts one subdirectory per registered external project.
+func GlobalProjectsDir(homeDir string) string {
+	return filepath.Join(GlobalDir(homeDir), "projects")
+}
+
+// ExternalProjectDir returns the external per-project directory for the
+// project identified by projectSlug (the result of ProjectSlug(rootPath)).
+func ExternalProjectDir(homeDir, projectSlug string) string {
+	return filepath.Join(GlobalProjectsDir(homeDir), projectSlug)
+}
+
+// ExternalProjectDBPath returns the SQLite path for an external project.
+func ExternalProjectDBPath(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "project.db")
+}
+
+// ExternalProjectConfigPath returns the per-project config.json path for an
+// external project.
+func ExternalProjectConfigPath(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "config.json")
+}
+
+// ExternalProjectCacheDir returns the cache directory for an external project.
+func ExternalProjectCacheDir(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "cache")
+}
+
+// ExternalProjectSnapshotsDir returns the snapshots directory for an external project.
+func ExternalProjectSnapshotsDir(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "snapshots")
+}
+
+// ExternalProjectExportsDir returns the exports directory for an external project.
+func ExternalProjectExportsDir(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "exports")
+}
+
+// ExternalProjectDocsDir returns the docs directory for an external project.
+func ExternalProjectDocsDir(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "docs")
+}
+
+// ExternalProjectLocksDir returns the locks directory for an external project.
+func ExternalProjectLocksDir(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "locks")
+}
+
+// ExternalProjectBackupsDir returns the backups directory for an external project.
+func ExternalProjectBackupsDir(homeDir, projectSlug string) string {
+	return filepath.Join(ExternalProjectDir(homeDir, projectSlug), "backups")
 }
 
 func LoadGlobalConfig(path string) (GlobalConfig, error) {

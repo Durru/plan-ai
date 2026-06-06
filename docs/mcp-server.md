@@ -4,14 +4,14 @@ The MCP (Model Context Protocol) Server exposes Plan-AI functionality as callabl
 
 ## Architecture
 
-Located in `internal/mcp/` and `cmd/mcp-server/`:
+Located in `internal/mcp/`:
 
 - **Server** — tool registry, execution, validation, and audit.
 - **Types** — `ToolDefinition`, `ToolResult`, `JSONSchema`, `RunRecord`.
 - **Validation** — argument validation against schema-like structs with type and enum checks.
 - **Tools** — default tool set registration.
-- **Protocol server** — `cmd/mcp-server/main.go` serves MCP JSON-RPC over stdio when run with no arguments or `stdio`.
-- **CLI compatibility** — `list-tools` and `call-tool` remain available for local validation.
+- **Protocol** — stdio transport is handled by `plan-ai mcp serve` via `mark3labs/mcp-go` SDK.
+- **CLI debug** — `plan-ai mcp list-tools`, `plan-ai mcp call-tool`, and `plan-ai mcp validate-tools` are available for local validation.
 
 ## Default tools
 
@@ -46,10 +46,7 @@ Backward-compatible aliases may also exist for earlier internal names such as `p
 ## CLI usage
 
 ```sh
-plan-ai-mcp-server list-tools
-plan-ai-mcp-server call-tool plan_ai.project_status '{"project_root": "/path/to/project"}'
-plan-ai-mcp-server call-tool plan_ai.agent_message '{"message": "What is next?"}'
-plan-ai-mcp-server call-tool plan_ai.get_context_level '{"level": "L0_Executive"}'
+plan-ai mcp serve
 ```
 
 For OpenCode or any MCP client, configure the local command as:
@@ -60,7 +57,7 @@ For OpenCode or any MCP client, configure the local command as:
     "plan-ai": {
       "type": "local",
       "enabled": true,
-      "command": ["plan-ai-mcp-server"]
+      "command": ["plan-ai", "mcp", "serve"]
     }
   }
 }

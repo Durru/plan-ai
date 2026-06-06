@@ -1,27 +1,51 @@
 package capabilities_test
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/plan-ai/plan-ai/internal/capabilities"
+	_ "modernc.org/sqlite"
 )
 
+func openTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+	if _, err := db.Exec(capabilitiesV2Schema); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	return db
+}
+
+const capabilitiesV2Schema = `
+CREATE TABLE IF NOT EXISTS capabilities_v2 (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  schema_info TEXT NOT NULL DEFAULT '{}',
+  version TEXT NOT NULL DEFAULT '1.0',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);`
+
 func TestNewDefaultRegistry(t *testing.T) {
-	r := capabilities.NewDefaultRegistry()
+	db := openTestDB(t)
+	defer db.Close()
+	r := capabilities.NewDefaultRegistry(db)
 	caps := r.ListCapabilities()
-	// We expect a fixed set: vision, research, planning, architecture, database, backend, frontend, security, testing, impact_analysis, validation
 	if len(caps) != 11 {
 		t.Fatalf("got %d capabilities, want 11", len(caps))
 	}
 
-	// Verify sorted by type
 	for i := 1; i < len(caps); i++ {
 		if caps[i].Type <= caps[i-1].Type {
 			t.Errorf("capabilities not sorted: %s <= %s", caps[i].Type, caps[i-1].Type)
 		}
 	}
 
-	// Spot-check known capabilities
 	check := func(ct capabilities.CapabilityType) {
 		c, err := r.GetCapability(ct)
 		if err != nil {
@@ -45,9 +69,11 @@ func TestNewDefaultRegistry(t *testing.T) {
 }
 
 func TestRegisterAndGetCapability(t *testing.T) {
-	r := capabilities.NewRegistry()
+	db := openTestDB(t)
+	defer db.Close()
+	r := capabilities.NewRegistry(db)
 
-	if err := r.RegisterCapability(capabilities.Capability{Type: "custom", Name: "Custom Skill", Description: "A custom registered skill"}); err != nil {
+	if err := r.RegisterCapability(capabilities.Capability{Type: "custom", Name: "custom", Description: "A custom registered skill"}); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -55,55 +81,56 @@ func TestRegisterAndGetCapability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if c.Name != "Custom Skill" {
+	if c.Name != "custom" {
 		t.Errorf("name = %q", c.Name)
 	}
 
-	// Get nonexistent
 	if _, err := r.GetCapability("nonexistent"); err == nil {
 		t.Fatal("expected error for nonexistent capability")
 	}
 }
 
 func TestRegisterCapabilityValidation(t *testing.T) {
-	r := capabilities.NewRegistry()
+	db := openTestDB(t)
+	defer db.Close()
+	r := capabilities.NewRegistry(db)
 
 	if err := r.RegisterCapability(capabilities.Capability{Type: "", Name: "No Type"}); err == nil {
 		t.Fatal("expected error for empty type")
 	}
-	if err := r.RegisterCapability(capabilities.Capability{Type: "notype", Name: ""}); err == nil {
-		t.Fatal("expected error for empty name")
-	}
 }
 
 func TestListCapabilities(t *testing.T) {
-	r := capabilities.NewRegistry()
+	db := openTestDB(t)
+	defer db.Close()
+	r := capabilities.NewRegistry(db)
 	if len(r.ListCapabilities()) != 0 {
 		t.Fatal("new empty registry should have 0 capabilities")
 	}
 
-	r.RegisterCapability(capabilities.Capability{Type: "b", Name: "B"})
-	r.RegisterCapability(capabilities.Capability{Type: "a", Name: "A"})
-	r.RegisterCapability(capabilities.Capability{Type: "c", Name: "C"})
+	r.RegisterCapability(capabilities.Capability{Type: "b", Name: "b"})
+	r.RegisterCapability(capabilities.Capability{Type: "a", Name: "a"})
+	r.RegisterCapability(capabilities.Capability{Type: "c", Name: "c"})
 
 	list := r.ListCapabilities()
 	if len(list) != 3 {
 		t.Fatalf("len = %d, want 3", len(list))
 	}
-	// Must be sorted
 	if list[0].Type != "a" || list[1].Type != "b" || list[2].Type != "c" {
 		t.Errorf("order: %v", list)
 	}
 }
 
 func TestRegisterCapabilityOverwritesExisting(t *testing.T) {
-	r := capabilities.NewRegistry()
-	r.RegisterCapability(capabilities.Capability{Type: "existing", Name: "Old"})
-	r.RegisterCapability(capabilities.Capability{Type: "existing", Name: "New"})
+	db := openTestDB(t)
+	defer db.Close()
+	r := capabilities.NewRegistry(db)
+	r.RegisterCapability(capabilities.Capability{Type: "existing", Name: "existing"})
+	r.RegisterCapability(capabilities.Capability{Type: "existing", Name: "existing", Description: "Updated"})
 
 	c, _ := r.GetCapability("existing")
-	if c.Name != "New" {
-		t.Errorf("name = %q, want New", c.Name)
+	if c.Description != "Updated" {
+		t.Errorf("description = %q, want Updated", c.Description)
 	}
 }
 

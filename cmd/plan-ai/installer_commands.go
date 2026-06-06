@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/plan-ai/plan-ai/internal/installer"
+	"github.com/plan-ai/plan-ai/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -48,6 +49,79 @@ func newSyncCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be synced without making changes")
+	cmd.Flags().BoolVar(&allowReal, "allow-real-opencode", false, "Allow writing to real ~/.config/opencode")
+	return cmd
+}
+
+// newUpdateCommand returns the top-level update command. It re-detects tools,
+// refreshes the state, re-runs the OpenCode integration, and ensures the
+// global store schema is current. It is idempotent: running it twice is the
+// same as running it once.
+func newUpdateCommand() *cobra.Command {
+	var (
+		dryRun    bool
+		allowReal bool
+	)
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Refresh global installation state and re-detect tools.",
+		Long: `Re-detect installed tools, refresh $HOME/.plan-ai/state.json,
+re-apply the OpenCode MCP registration (honoring $OPENCODE_CONFIG_DIR),
+and ensure the global store schema is current.
+
+This is idempotent — running it twice is the same as running it once.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			home, err := resolveHomeRoot()
+			if err != nil {
+				return err
+			}
+
+			inst := installer.NewInstaller(home)
+			if err := inst.LoadState(); err != nil {
+				return fmt.Errorf("update requires an existing install; run 'plan-ai install' first: %w", err)
+			}
+
+			if dryRun {
+				tools := inst.DetectTools()
+				fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: update would re-detect and refresh")
+				fmt.Fprintf(cmd.OutOrStdout(), "  State:    %s\n", filepath.Join(home, ".plan-ai", "state.json"))
+				fmt.Fprintf(cmd.OutOrStdout(), "  Preset:   %s\n", inst.State.Preset)
+				fmt.Fprintf(cmd.OutOrStdout(), "  opencode: %v\n", tools.OpenCode)
+				fmt.Fprintf(cmd.OutOrStdout(), "  git:      %v\n", tools.Git)
+				fmt.Fprintf(cmd.OutOrStdout(), "  go:       %v\n", tools.Go)
+				fmt.Fprintf(cmd.OutOrStdout(), "  mcp-srv:  %v\n", tools.MCPBinary)
+				return nil
+			}
+
+			if err := inst.Sync(installer.InstallOptions{
+				AllowReal: allowReal,
+				BinDir:    inst.State.BinDir,
+			}); err != nil {
+				return fmt.Errorf("update: %w", err)
+			}
+
+			// Ensure global DB schema is current.
+			layout, err := store.EnsureGlobalLayout(home)
+			if err != nil {
+				return err
+			}
+			if db, err := store.Open(layout.DBPath); err == nil {
+				if mErr := store.RunGlobalMigrations(db); mErr != nil {
+					db.Close()
+					return fmt.Errorf("run global migrations: %w", mErr)
+				}
+				db.Close()
+			}
+
+			tools := inst.State.Tools
+			fmt.Fprintln(cmd.OutOrStdout(), "Update complete.")
+			fmt.Fprintf(cmd.OutOrStdout(), "  State: %s\n", filepath.Join(home, ".plan-ai", "state.json"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Tools: opencode=%v git=%v go=%v mcp-srv=%v\n",
+				tools.OpenCode, tools.Git, tools.Go, tools.MCPBinary)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be updated without making changes")
 	cmd.Flags().BoolVar(&allowReal, "allow-real-opencode", false, "Allow writing to real ~/.config/opencode")
 	return cmd
 }

@@ -36,6 +36,15 @@ func (r TaskRepository) GetByID(id string) (domain.Task, error) {
 func (r TaskRepository) ListByPhase(id string) ([]domain.Task, error) {
 	return r.list(`WHERE phase_id=? ORDER BY position, created_at, id`, id)
 }
+func (r TaskRepository) List() ([]domain.Task, error) {
+	return r.list(`ORDER BY position, created_at, id`)
+}
+func (r TaskRepository) ListByPlanID(planID string) ([]domain.Task, error) {
+	return r.list(`WHERE plan_id=? ORDER BY position, created_at, id`, planID)
+}
+func (r TaskRepository) ListByStatus(status string) ([]domain.Task, error) {
+	return r.list(`WHERE status=? ORDER BY position, created_at, id`, status)
+}
 func (r TaskRepository) list(where string, args ...any) ([]domain.Task, error) {
 	rows, err := r.db.Query(`SELECT id, phase_id, plan_id, title, summary, status, position, context_size, created_at, updated_at FROM tasks `+where, args...)
 	if err != nil {

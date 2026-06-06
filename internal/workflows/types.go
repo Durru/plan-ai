@@ -1,6 +1,9 @@
 package workflows
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 type WorkflowType string
 type RunStatus string
@@ -23,10 +26,17 @@ type Workflow struct {
 	Steps []string
 }
 
+type Step struct {
+	Name   string    `json:"name"`
+	Status RunStatus `json:"status"`
+	Error  string    `json:"error,omitempty"`
+}
+
 type WorkflowRun struct {
 	ID           string
 	WorkflowType WorkflowType
 	Status       RunStatus
+	Steps        []Step
 	StartedAt    time.Time
 	FinishedAt   time.Time
 }
@@ -36,3 +46,5 @@ type RunRepository interface {
 	UpdateWorkflowRun(WorkflowRun) (WorkflowRun, error)
 	GetWorkflowRun(string) (WorkflowRun, error)
 }
+
+type StepExecutor func(run *WorkflowRun, stepName string, db *sql.DB) error

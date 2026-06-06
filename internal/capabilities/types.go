@@ -21,9 +21,13 @@ const (
 
 // Capability defines a registered abstract skill.
 type Capability struct {
+	ID          string         `json:"id"`
 	Type        CapabilityType `json:"type"`
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
+	SchemaInfo  string         `json:"schema_info"`
+	Version     string         `json:"version"`
+	Enabled     bool           `json:"enabled"`
 	CreatedAt   time.Time      `json:"created_at"`
 }
 

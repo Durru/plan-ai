@@ -1,7 +1,8 @@
 # ADR-0016: MCP Server
 
-**Status:** Approved  
+**Status:** Superseded  
 **Date:** 2026-06-03  
+**Superseded:** 2026-06-05 — `cmd/mcp-server/` removed; MCP serving is `plan-ai mcp serve`  
 **Phase:** 19
 
 ## Context

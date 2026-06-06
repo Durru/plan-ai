@@ -44,7 +44,7 @@ The generated `opencode.json` includes a local MCP entry:
     "plan-ai": {
       "type": "local",
       "enabled": true,
-      "command": ["plan-ai-mcp-server"]
+      "command": ["plan-ai", "mcp", "serve"]
     }
   }
 }
@@ -74,7 +74,7 @@ Relevant packages:
 
 - `internal/opencode/` — detection, config, registry, doctor checks, artifact generation.
 - `internal/mcp/` — MCP tool definitions and handlers.
-- `cmd/mcp-server/` — stdio MCP server entry point (`plan-ai-mcp-server`).
+- `cmd/plan-ai/` — CLI entry point; `plan-ai mcp serve` serves MCP over stdio.
 
 ## Safety rules
 
