@@ -1015,6 +1015,39 @@ CREATE TABLE IF NOT EXISTS entity_links (
 CREATE INDEX IF NOT EXISTS idx_entity_links_project ON entity_links(project_id);
 CREATE INDEX IF NOT EXISTS idx_entity_links_source ON entity_links(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_entity_links_target ON entity_links(target_type, target_id);
+
+-- change_audit: audit trail for change request lifecycle transitions
+CREATE TABLE IF NOT EXISTS change_audit (
+  id TEXT PRIMARY KEY,
+  change_request_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL DEFAULT '',
+  from_state TEXT NOT NULL DEFAULT '',
+  to_state TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_change_audit_request ON change_audit(change_request_id);
+CREATE INDEX IF NOT EXISTS idx_change_audit_project ON change_audit(project_id);
+
+-- approved_context: unified table replacing 6 legacy approved_* tables.
+-- All approved items (requirements, constraints, decisions, preferences,
+-- references, goals) now live in a single table with a type discriminator.
+CREATE TABLE IF NOT EXISTS approved_context (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  approved_type TEXT NOT NULL,
+  source_id TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'approved',
+  supersedes_id TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(project_id, approved_type, content)
+);
+CREATE INDEX IF NOT EXISTS idx_approved_context_project ON approved_context(project_id);
+CREATE INDEX IF NOT EXISTS idx_approved_context_type ON approved_context(approved_type);
 CREATE INDEX IF NOT EXISTS idx_entity_states_project ON entity_states(project_id);
 CREATE INDEX IF NOT EXISTS idx_entity_states_type ON entity_states(entity_type);
 CREATE INDEX IF NOT EXISTS idx_entity_states_status ON entity_states(status);

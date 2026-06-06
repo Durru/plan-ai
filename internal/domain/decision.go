@@ -6,24 +6,27 @@ import "time"
 // They represent the canonical lifecycle for architectural and
 // design decisions.
 const (
-	DecisionProposed   Status = "proposed"
-	DecisionDeprecated Status = "deprecated"
+	DecisionProposed    Status = "proposed"
+	DecisionSuperseded  Status = "superseded"
+	DecisionDeprecated  Status = "deprecated"
 )
 
 // Decision records a design or architectural choice with its
 // rationale, alternatives, and current approval status.
 type Decision struct {
-	ID           string
-	ProjectID    string
-	Title        string
-	Context      string
-	Decision     string
-	Rationale    string
-	Alternatives string
-	Status       Status
-	Impact       string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID             string
+	ProjectID      string
+	Title          string
+	Context        string
+	Decision       string
+	Rationale      string
+	Alternatives   string
+	Status         Status
+	SupersedesID   string `json:"supersedes_id,omitempty"`
+	SupersededByID string `json:"superseded_by_id,omitempty"`
+	Impact         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // ValidDecisionTransitions returns the allowed status transitions

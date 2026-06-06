@@ -8,8 +8,9 @@ import (
 
 // GenerateProjectArtifacts creates the directory structure for OpenCode project
 // foundation artifacts. Used when --opencode is set on plan-ai init.
+// Respects $OPENCODE_CONFIG_DIR for sandbox configurations.
 func GenerateProjectArtifacts(homeRoot string) error {
-	base := filepath.Join(homeRoot, ".config", "opencode")
+	base := opencodeConfigDir(homeRoot)
 
 	dirs := []string{
 		filepath.Join(base, "profiles"),
