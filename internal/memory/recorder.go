@@ -2,7 +2,6 @@ package memory
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -17,12 +16,11 @@ import (
 // topic-key-based lookup.
 type Recorder struct {
 	svc *Service
-	db  *sql.DB
 }
 
-// NewRecorder creates a recorder backed by the given store and database.
-func NewRecorder(store Store, db *sql.DB) *Recorder {
-	return &Recorder{svc: NewService(store), db: db}
+// NewRecorder creates a recorder backed by the given store.
+func NewRecorder(store Store) *Recorder {
+	return &Recorder{svc: NewService(store)}
 }
 
 // RecordApprovedContext creates a memory entry for an approved context item.
@@ -73,28 +71,6 @@ func (r *Recorder) RecordChangeEvent(projectID, eventType, summary string) (Entr
 
 // FindByTopicKey searches memory entries by their topic_key in source.
 func (r *Recorder) FindByTopicKey(projectID, topicKey string) ([]Entry, error) {
-	if r.db != nil {
-		rows, err := r.db.Query(`SELECT id, project_id, entry_type, title, question, answer, content, citation, source, status, created_at, updated_at FROM project_memory_v2 WHERE project_id = ? AND source LIKE ? ORDER BY created_at DESC`,
-			projectID, "%topic:"+strings.ReplaceAll(topicKey, "%", "\\%")+"%")
-		if err == nil {
-			defer rows.Close()
-			var entries []Entry
-			for rows.Next() {
-				var e Entry
-				var c, u string
-				if err := rows.Scan(&e.ID, &e.ProjectID, &e.EntryType, &e.Title, &e.Question, &e.Answer, &e.Content, &e.Citation, &e.Source, &e.Status, &c, &u); err != nil {
-					continue
-				}
-				e.CreatedAt = parseRFC3339(c)
-				e.UpdatedAt = parseRFC3339(u)
-				entries = append(entries, e)
-			}
-			if len(entries) > 0 {
-				return entries, rows.Err()
-			}
-		}
-	}
-	// Fallback to in-memory search via the Service.
 	return r.svc.Search(projectID, topicKey)
 }
 
@@ -107,7 +83,6 @@ func (r *Recorder) Search(projectID, query string) ([]Entry, error) {
 // Supersede marks an existing entry as "superseded" and creates a
 // replacement. Returns the new entry.
 func (r *Recorder) Supersede(projectID, oldTopicKey string, newEntry Entry) (Entry, error) {
-	// Find and mark old entries as superseded.
 	old, err := r.FindByTopicKey(projectID, oldTopicKey)
 	if err != nil {
 		return newEntry, err

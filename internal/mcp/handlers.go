@@ -12,7 +12,7 @@ import (
 	"github.com/plan-ai/plan-ai/internal/conversation"
 	"github.com/plan-ai/plan-ai/internal/domain"
 	"github.com/plan-ai/plan-ai/internal/guard"
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/plan-ai/plan-ai/internal/planning"
 	"github.com/plan-ai/plan-ai/internal/store"
 )
 
@@ -372,26 +372,40 @@ func HandleCreateMasterPlan(args map[string]any) (map[string]any, error) {
 		}, nil
 	}
 
-	repos := store.NewRepositories(ps.DB)
-
-	plan := domain.MasterPlan{
-		ID:        domain.NewID("plan"),
-		ProjectID: pid,
-		Title:     getStringArg(args, "title"),
-		Summary:   getStringArg(args, "summary"),
-		Status:    domain.StatusDraft,
-		Version:   1,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	title := getStringArg(args, "title")
+	summary := getStringArg(args, "summary")
+	visionRef := getStringArg(args, "vision_reference")
+	if visionRef == "" {
+		visionRef = pid
 	}
-	if err := repos.Plan.SaveMaster(plan); err != nil {
-		return nil, fmt.Errorf("save master plan: %w", err)
+
+	planningRepo := store.NewPlanningRepository(ps.DB)
+	svc := planning.NewService(planningRepo)
+
+	reqs := []string{}
+	if title != "" {
+		reqs = append(reqs, title)
+	}
+	if summary != "" {
+		reqs = append(reqs, summary)
+	}
+	if len(reqs) == 0 {
+		reqs = append(reqs, "Master Plan")
+	}
+
+	plan, err := svc.CreateMasterPlan(planning.PlanningInput{
+		ProjectID:            pid,
+		VisionReference:      visionRef,
+		ApprovedRequirements: reqs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create master plan: %w", err)
 	}
 
 	return map[string]any{
 		"plan_id":    plan.ID,
 		"title":      plan.Title,
-		"summary":    plan.Summary,
+		"summary":    plan.Title,
 		"status":     string(plan.Status),
 		"version":    plan.Version,
 		"created_at": formatTime(plan.CreatedAt),
@@ -420,30 +434,26 @@ func HandleCreateSpecificPlan(args map[string]any) (map[string]any, error) {
 		}, nil
 	}
 
-	repos := store.NewRepositories(ps.DB)
+	planningRepo := store.NewPlanningRepository(ps.DB)
+	svc := planning.NewService(planningRepo)
 	masterPlanID := getStringArg(args, "master_plan_id")
 	goal := getStringArg(args, "goal")
+	title := getStringArg(args, "title")
 
-	plan := domain.SpecificPlan{
-		ID:           domain.NewID("plan"),
-		ProjectID:    pid,
-		MasterPlanID: masterPlanID,
-		Title:        getStringArg(args, "title"),
-		Summary:      goal,
-		Status:       domain.StatusDraft,
-		Version:      1,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-	if err := repos.Plan.SaveSpecific(plan); err != nil {
-		return nil, fmt.Errorf("save specific plan: %w", err)
+	plan, err := svc.CreateSpecificPlan(masterPlanID, planning.SpecificPlanInput{
+		ProjectID: pid,
+		Title:     title,
+		Goal:      goal,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create specific plan: %w", err)
 	}
 
 	return map[string]any{
 		"plan_id":        plan.ID,
 		"master_plan_id": plan.MasterPlanID,
 		"title":          plan.Title,
-		"goal":           plan.Summary,
+		"goal":           plan.Goal,
 		"status":         string(plan.Status),
 		"created_at":     formatTime(plan.CreatedAt),
 	}, nil
@@ -1543,300 +1553,5 @@ func HandleExportDocs(args map[string]any) (map[string]any, error) {
 	}, nil
 }
 
-// ── Phase 51: Product Intent Engine Handlers ──
-
-func HandleCreateProductIntent(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	description := getStringArg(args, "description")
-	if description == "" {
-		return nil, fmt.Errorf("description is required")
-	}
-	expectedOutcome := getStringArg(args, "expected_outcome")
-	desiredExperience := getStringArg(args, "desired_experience")
-	desiredResult := getStringArg(args, "desired_result")
-
-	var userExpectations, nonExpectations []string
-	if ue := getStringArg(args, "user_expectations"); ue != "" {
-		userExpectations = strings.Split(ue, "\n")
-	}
-	if ne := getStringArg(args, "non_expectations"); ne != "" {
-		nonExpectations = strings.Split(ne, "\n")
-	}
-
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	pi, err := svc.CreateProductIntent(intentv3.CreateProductIntentInput{
-		ProjectID:         projectID(projectRoot),
-		Description:       description,
-		ExpectedOutcome:   expectedOutcome,
-		DesiredExperience: desiredExperience,
-		DesiredResult:     desiredResult,
-		UserExpectations:  userExpectations,
-		NonExpectations:   nonExpectations,
-		SuccessDefinition: getStringArg(args, "success_definition"),
-		FailureDefinition: getStringArg(args, "failure_definition"),
-		DiscoveryResultID: getStringArg(args, "discovery_result_id"),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create product intent: %w", err)
-	}
-
-	return map[string]any{
-		"id":                  pi.ID,
-		"project_id":          pi.ProjectID,
-		"description":         pi.Description,
-		"status":              string(pi.Status),
-		"expected_outcome":    pi.ExpectedOutcome,
-		"desired_experience":  pi.DesiredExperience,
-		"desired_result":      pi.DesiredResult,
-		"user_expectations":   pi.UserExpectations,
-		"non_expectations":    pi.NonExpectations,
-		"success_definition":  pi.SuccessDefinition,
-		"failure_definition":  pi.FailureDefinition,
-		"discovery_result_id": pi.DiscoveryResultID,
-		"created_at":          formatTime(pi.CreatedAt),
-		"updated_at":          formatTime(pi.UpdatedAt),
-	}, nil
-}
-
-func HandleListProductIntents(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	list, err := svc.ListProductIntents(projectID(projectRoot))
-	if err != nil {
-		return nil, fmt.Errorf("list product intents: %w", err)
-	}
-	items := make([]map[string]any, 0, len(list))
-	for _, pi := range list {
-		items = append(items, map[string]any{
-			"id":          pi.ID,
-			"description": pi.Description,
-			"status":      string(pi.Status),
-			"created_at":  formatTime(pi.CreatedAt),
-		})
-	}
-	return map[string]any{"items": items, "count": len(items)}, nil
-}
-
-func HandleGetProductIntent(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	intentID := getStringArg(args, "intent_id")
-	if intentID == "" {
-		return nil, fmt.Errorf("intent_id is required")
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	pi, err := svc.GetProductIntent(intentID)
-	if err != nil {
-		return nil, fmt.Errorf("get product intent: %w", err)
-	}
-	return map[string]any{
-		"id":                  pi.ID,
-		"project_id":          pi.ProjectID,
-		"description":         pi.Description,
-		"status":              string(pi.Status),
-		"expected_outcome":    pi.ExpectedOutcome,
-		"desired_experience":  pi.DesiredExperience,
-		"desired_result":      pi.DesiredResult,
-		"user_expectations":   pi.UserExpectations,
-		"non_expectations":    pi.NonExpectations,
-		"success_definition":  pi.SuccessDefinition,
-		"failure_definition":  pi.FailureDefinition,
-		"discovery_result_id": pi.DiscoveryResultID,
-		"created_at":          formatTime(pi.CreatedAt),
-		"updated_at":          formatTime(pi.UpdatedAt),
-	}, nil
-}
-
-func HandleSubmitProductIntent(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	intentID := getStringArg(args, "intent_id")
-	if intentID == "" {
-		return nil, fmt.Errorf("intent_id is required")
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	pi, err := svc.SubmitProductIntentForApproval(intentID)
-	if err != nil {
-		return nil, fmt.Errorf("submit product intent: %w", err)
-	}
-	return map[string]any{
-		"id":     pi.ID,
-		"status": string(pi.Status),
-	}, nil
-}
-
-func HandleApproveProductIntent(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	intentID := getStringArg(args, "intent_id")
-	if intentID == "" {
-		return nil, fmt.Errorf("intent_id is required")
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	pi, err := svc.ApproveProductIntent(intentID)
-	if err != nil {
-		return nil, fmt.Errorf("approve product intent: %w", err)
-	}
-	return map[string]any{
-		"id":     pi.ID,
-		"status": string(pi.Status),
-	}, nil
-}
-
-func HandleRejectProductIntent(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	intentID := getStringArg(args, "intent_id")
-	if intentID == "" {
-		return nil, fmt.Errorf("intent_id is required")
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	pi, err := svc.RejectProductIntent(intentID)
-	if err != nil {
-		return nil, fmt.Errorf("reject product intent: %w", err)
-	}
-	return map[string]any{
-		"id":     pi.ID,
-		"status": string(pi.Status),
-	}, nil
-}
-
-// ── Phase 52: Discovery Engine Handlers ──
-
-func HandleDiscoverIntent(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	content := getStringArg(args, "content")
-	if content == "" {
-		return nil, fmt.Errorf("content is required")
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	dr, err := svc.DiscoverIntent(projectID(projectRoot), content)
-	if err != nil {
-		return nil, fmt.Errorf("discover intent: %w", err)
-	}
-	return map[string]any{
-		"id":              dr.ID,
-		"project_id":      dr.ProjectID,
-		"raw_input":       dr.RawInput,
-		"detected_intent": dr.DetectedIntent,
-		"classification":  dr.Classification,
-		"objectives":      dr.Objectives,
-		"restrictions":    dr.Restrictions,
-		"preferences":     dr.Preferences,
-		"expectations":    dr.Expectations,
-		"gaps":            dr.Gaps,
-		"questions":       dr.Questions,
-		"created_at":      formatTime(dr.CreatedAt),
-	}, nil
-}
-
-func HandleListDiscoveryResults(args map[string]any) (map[string]any, error) {
-	projectRoot, err := getProjectRoot(args)
-	if err != nil {
-		return nil, fmt.Errorf("resolve project root: %w", err)
-	}
-	ps, cleanup, err := openStore(projectRoot)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	intentRepo := store.NewIntentV3Repository(ps.DB)
-	discRepo := store.NewIntentV3DiscoveryResultRepository(ps.DB)
-	svc := intentv3.NewService(intentRepo, discRepo)
-
-	list, err := svc.ListDiscoveryResults(projectID(projectRoot))
-	if err != nil {
-		return nil, fmt.Errorf("list discovery results: %w", err)
-	}
-	items := make([]map[string]any, 0, len(list))
-	for _, dr := range list {
-		items = append(items, map[string]any{
-			"id":              dr.ID,
-			"detected_intent": dr.DetectedIntent,
-			"classification":  dr.Classification,
-			"created_at":      formatTime(dr.CreatedAt),
-		})
-	}
-	return map[string]any{"items": items, "count": len(items)}, nil
-}
+// Product intent and discovery engine handlers live in handlers_intent.go.
+// They use store repos directly (not intentv3.Service) as of Phase 15.

@@ -392,6 +392,70 @@ func (r *ResearchRepository) Summary() (research.ResearchSummary, error) {
 	return summary, nil
 }
 
+// IncrementReuseCount increments the reuse counter for a research entry.
+func (r *ResearchRepository) IncrementReuseCount(id string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.Exec(`UPDATE research_entries SET reuse_count = COALESCE(reuse_count, 0) + 1, reused_at = ? WHERE id = ? AND status = ?`, now, id, string(research.ResearchStatusApproved))
+	return err
+}
+
+// EnsureFTS creates the FTS5 triggers for research_entries_fts if they
+// don't already exist. Idempotent.
+func (r *ResearchRepository) EnsureFTS() error {
+	_, err := r.db.Exec(researchFTSTriggers)
+	return err
+}
+
+// PromoteToKnowledge creates a knowledge object from an approved research
+// entry and links them. Returns the knowledge object ID.
+func (r *ResearchRepository) PromoteToKnowledge(researchID string) (knowledgeID string, err error) {
+	entry, err := r.GetEntry(researchID)
+	if err != nil {
+		return "", fmt.Errorf("find research %s: %w", researchID, err)
+	}
+	if entry.Status != research.ResearchStatusApproved {
+		return "", fmt.Errorf("research %s is not approved (status: %s)", researchID, entry.Status)
+	}
+
+	category := research.Classify(entry.Topic)
+	knowledgeID = ensureID("", "knowledge")
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	if _, err := r.db.Exec(`INSERT INTO knowledge_objects (id, project_id, topic, category, summary, confidence, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		knowledgeID, entry.ProjectID, entry.Topic, string(category), entry.Summary, float64(entry.Confidence), "approved", now, now); err != nil {
+		return "", fmt.Errorf("create knowledge: %w", err)
+	}
+
+	linkID := ensureID("", "rklink")
+	if _, err := r.db.Exec(`INSERT INTO research_knowledge_links (id, research_id, knowledge_id, created_at) VALUES (?, ?, ?, ?)`,
+		linkID, researchID, knowledgeID, now); err != nil {
+		return knowledgeID, fmt.Errorf("link research->knowledge: %w", err)
+	}
+
+	return knowledgeID, nil
+}
+
+// researchFTSTriggers creates the triggers that keep research_entries_fts
+// in sync with the research_entries table.
+const researchFTSTriggers = `
+INSERT OR IGNORE INTO research_entries_fts(research_entries_fts) VALUES('rebuild');
+
+CREATE TRIGGER IF NOT EXISTS research_entries_fts_ai AFTER INSERT ON research_entries BEGIN
+  INSERT INTO research_entries_fts(rowid, id, topic, objective, summary)
+  VALUES (new.rowid, new.id, new.topic, new.topic, new.summary);
+END;
+
+CREATE TRIGGER IF NOT EXISTS research_entries_fts_ad AFTER DELETE ON research_entries BEGIN
+  DELETE FROM research_entries_fts WHERE rowid = old.rowid;
+END;
+
+CREATE TRIGGER IF NOT EXISTS research_entries_fts_au AFTER UPDATE ON research_entries BEGIN
+  DELETE FROM research_entries_fts WHERE rowid = old.rowid;
+  INSERT INTO research_entries_fts(rowid, id, topic, objective, summary)
+  VALUES (new.rowid, new.id, new.topic, new.topic, new.summary);
+END;
+`
+
 func (r *ResearchRepository) queryEntries(query string, args ...any) ([]research.ResearchEntry, error) {
 	rows, err := r.db.Query(query, args...)
 	if err != nil {

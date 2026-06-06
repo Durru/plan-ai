@@ -89,7 +89,8 @@ func TestFindReusableResearchReturnsApprovedOnly(t *testing.T) {
 	db := openReuseDB(t)
 	seedApprovedResearch(t, db)
 
-	svc := NewReuseService(db, nil)
+	repo := newFullRepo(db)
+	svc := NewReuseService(repo)
 	results, err := svc.FindReusable("proj_a", "OAuth2")
 	if err != nil {
 		t.Fatalf("FindReusable: %v", err)
@@ -108,7 +109,8 @@ func TestResearchTopicReusesExistingApprovedResearch(t *testing.T) {
 	db := openReuseDB(t)
 	seedApprovedResearch(t, db)
 
-	svc := NewReuseService(db, nil)
+	repo := newFullRepo(db)
+	svc := NewReuseService(repo)
 	results, err := svc.FindReusable("proj_a", "database")
 	if err != nil {
 		t.Fatalf("FindReusable: %v", err)
@@ -129,7 +131,9 @@ func TestApprovedResearchPromotesToKnowledge(t *testing.T) {
 	db := openReuseDB(t)
 	seedApprovedResearch(t, db)
 
-	knowledgeID, err := PromoteToKnowledge(db, "r1")
+	repo := newFullRepo(db)
+	svc := NewReuseService(repo)
+	knowledgeID, err := svc.PromoteToKnowledge("r1")
 	if err != nil {
 		t.Fatalf("PromoteToKnowledge: %v", err)
 	}
@@ -158,7 +162,8 @@ func TestPlanningExcludesDraftResearch(t *testing.T) {
 	db := openReuseDB(t)
 	seedApprovedResearch(t, db)
 
-	svc := NewReuseService(db, nil)
+	repo := newFullRepo(db)
+	svc := NewReuseService(repo)
 	results, err := svc.FindReusable("proj_a", "testing")
 	if err != nil {
 		t.Fatalf("FindReusable: %v", err)
@@ -178,7 +183,8 @@ func TestResearchReuseIncrementsReuseCount(t *testing.T) {
 	db := openReuseDB(t)
 	seedApprovedResearch(t, db)
 
-	svc := NewReuseService(db, nil)
+	repo := newFullRepo(db)
+	svc := NewReuseService(repo)
 
 	if err := svc.IncrementReuseCount("r1"); err != nil {
 		t.Fatalf("IncrementReuseCount: %v", err)
@@ -200,7 +206,8 @@ func TestReuseService_EnsureFTS(t *testing.T) {
 	db := openReuseDB(t)
 	seedApprovedResearch(t, db)
 
-	svc := NewReuseService(db, nil)
+	repo := newFullRepo(db)
+	svc := NewReuseService(repo)
 	if err := svc.EnsureFTS(); err != nil {
 		t.Fatalf("EnsureFTS: %v", err)
 	}

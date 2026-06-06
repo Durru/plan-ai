@@ -41,6 +41,13 @@ type Repository interface {
 	LinkKnowledge(researchID, knowledgeID string) error
 	ListKnowledgeLinks(researchID string) ([]ResearchKnowledgeLink, error)
 
+	// Reuse
+	IncrementReuseCount(id string) error
+	EnsureFTS() error
+
+	// Knowledge promotion
+	PromoteToKnowledge(researchID string) (knowledgeID string, err error)
+
 	// Summary
 	Summary() (ResearchSummary, error)
 }

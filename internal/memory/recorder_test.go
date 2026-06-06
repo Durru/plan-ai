@@ -1,47 +1,9 @@
 package memory
 
 import (
-	"database/sql"
 	"strings"
 	"testing"
-
-	_ "modernc.org/sqlite"
 )
-
-func openRecorderDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:"+
-		"?_pragma=journal_mode(WAL)"+
-		"&_pragma=busy_timeout(5000)"+
-		"&_pragma=foreign_keys(ON)")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-
-	_, err = db.Exec(`
-CREATE TABLE IF NOT EXISTS project_memory_v2 (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  entry_type TEXT NOT NULL,
-  title TEXT NOT NULL DEFAULT '',
-  question TEXT NOT NULL DEFAULT '',
-  answer TEXT NOT NULL DEFAULT '',
-  content TEXT NOT NULL DEFAULT '',
-  citation TEXT NOT NULL DEFAULT '',
-  source TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_project_memory_v2_project ON project_memory_v2(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_memory_v2_type ON project_memory_v2(entry_type);
-`)
-	if err != nil {
-		t.Fatalf("schema: %v", err)
-	}
-	return db
-}
 
 // inMemoryStore is a minimal Store implementation backed by a map.
 type inMemoryStore struct{ entries map[string]Entry }
@@ -84,8 +46,7 @@ func (s *inMemoryStore) Update(e Entry) (Entry, error) {
 
 func TestMemoryRecorderRecordsApprovedContext(t *testing.T) {
 	store := newInMemoryStore()
-	db := openRecorderDB(t)
-	rec := NewRecorder(store, db)
+	rec := NewRecorder(store)
 
 	e, err := rec.RecordApprovedContext("proj_a", "decision", "Use schema-per-tenant isolation")
 	if err != nil {
@@ -113,8 +74,7 @@ func TestMemoryRecorderRecordsApprovedContext(t *testing.T) {
 
 func TestMemoryRecorderRecordsAppliedProposal(t *testing.T) {
 	store := newInMemoryStore()
-	db := openRecorderDB(t)
-	rec := NewRecorder(store, db)
+	rec := NewRecorder(store)
 
 	e, err := rec.RecordAppliedProposal("proj_b", "prop_1", "Add multi-tenant support to auth module")
 	if err != nil {
@@ -129,9 +89,8 @@ func TestMemoryRecorderRecordsAppliedProposal(t *testing.T) {
 }
 
 func TestMemorySearchUsesFTS(t *testing.T) {
-	db := openRecorderDB(t)
 	store := newInMemoryStore()
-	rec := NewRecorder(store, db)
+	rec := NewRecorder(store)
 
 	rec.RecordApprovedContext("proj_c", "decision", "Use PostgreSQL for main database")
 	rec.RecordApprovedContext("proj_c", "constraint", "Must encrypt data at rest")
@@ -155,9 +114,8 @@ func TestMemorySearchUsesFTS(t *testing.T) {
 }
 
 func TestMemoryFindByTopicKey(t *testing.T) {
-	db := openRecorderDB(t)
 	store := newInMemoryStore()
-	rec := NewRecorder(store, db)
+	rec := NewRecorder(store)
 
 	rec.RecordApprovedContext("proj_d", "decision", "Use Redis for session cache")
 	rec.RecordApprovedContext("proj_d", "constraint", "Sessions must expire after 24h")
@@ -183,8 +141,7 @@ func TestMemoryFindByTopicKey(t *testing.T) {
 
 func TestSupersededMemoryExcludedByDefault(t *testing.T) {
 	store := newInMemoryStore()
-	db := openRecorderDB(t)
-	rec := NewRecorder(store, db)
+	rec := NewRecorder(store)
 
 	old, _ := rec.RecordApprovedContext("proj_e", "decision", "Use MySQL 5.7")
 	tk := strings.TrimPrefix(strings.TrimPrefix(old.Source, "approved-context "), "approved-context")

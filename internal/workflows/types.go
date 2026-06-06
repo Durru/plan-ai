@@ -27,9 +27,11 @@ type Workflow struct {
 }
 
 type Step struct {
-	Name   string    `json:"name"`
-	Status RunStatus `json:"status"`
-	Error  string    `json:"error,omitempty"`
+	Name        string     `json:"name"`
+	Status      RunStatus  `json:"status"`
+	Error       string     `json:"error,omitempty"`
+	Output      string     `json:"output,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 type WorkflowRun struct {

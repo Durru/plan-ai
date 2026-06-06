@@ -405,4 +405,7 @@ func (m *mockRepository) LinkKnowledge(researchID, knowledgeID string) error { r
 func (m *mockRepository) ListKnowledgeLinks(researchID string) ([]ResearchKnowledgeLink, error) {
 	return nil, nil
 }
+func (m *mockRepository) IncrementReuseCount(id string) error                     { return nil }
+func (m *mockRepository) EnsureFTS() error                                        { return nil }
+func (m *mockRepository) PromoteToKnowledge(researchID string) (string, error)    { return "k1", nil }
 func (m *mockRepository) Summary() (ResearchSummary, error) { return ResearchSummary{}, nil }
