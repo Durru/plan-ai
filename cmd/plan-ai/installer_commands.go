@@ -126,11 +126,11 @@ This is idempotent — running it twice is the same as running it once.`,
 	return cmd
 }
 
-// newUninstallCommand returns the uninstall command using the new installer.
 func newUninstallCommand() *cobra.Command {
 	var (
 		dryRun     bool
 		components []string
+		allowReal  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "uninstall",
@@ -140,12 +140,16 @@ func newUninstallCommand() *cobra.Command {
 Without --component, removes all Plan-AI data and state.
 With --component, removes only the specified components.
 
+OpenCode config modification is safe by default: Plan-AI never writes to
+real ~/.config/opencode/ unless you pass --allow-real-opencode. Without
+it, the OpenCode config cleanup step is skipped.
+
 Examples:
   plan-ai uninstall                   # Remove everything
   plan-ai uninstall --component docs  # Remove docs component only
   plan-ai uninstall --dry-run         # Show what would be removed`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, err := os.UserHomeDir()
+			home, err := resolveHomeRoot()
 			if err != nil {
 				return fmt.Errorf("home dir: %w", err)
 			}
@@ -159,6 +163,9 @@ Examples:
 				if len(components) == 0 {
 					fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: full uninstall would remove:")
 					fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", filepath.Join(home, ".plan-ai"))
+					if !allowReal {
+						fmt.Fprintln(cmd.OutOrStdout(), "  - OpenCode config cleanup: skipped (pass --allow-real-opencode to modify real config)")
+					}
 				} else {
 					fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: would uninstall components:")
 					for _, c := range components {
@@ -172,6 +179,13 @@ Examples:
 				return fmt.Errorf("uninstall: %w", err)
 			}
 
+			// Only clean OpenCode config when explicitly allowed or sandboxed.
+			if _, ocErr := resolveOpenCodeConfigDirForWrite(allowReal); ocErr == nil {
+				if err := inst.RemovePlanAIFromOpenConfig(); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not clean OpenCode config: %v\n", err)
+				}
+			}
+
 			if len(components) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "Plan-AI fully uninstalled.")
 			} else {
@@ -182,5 +196,6 @@ Examples:
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be uninstalled without making changes")
 	cmd.Flags().StringSliceVar(&components, "component", nil, "Component(s) to uninstall (repeatable, omit for full uninstall)")
+	cmd.Flags().BoolVar(&allowReal, "allow-real-opencode", false, "allow modifying real ~/.config/opencode when OPENCODE_CONFIG_DIR is not set")
 	return cmd
 }

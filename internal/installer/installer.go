@@ -294,16 +294,8 @@ func (inst *Installer) Uninstall(components []string) error {
 	}
 
 	if len(components) == 0 {
-		// Full uninstall — surgically remove Plan-AI's footprint:
-		//   1. Strip the plan-ai MCP entry from the opencode config
-		//      (with a backup so a user mistake is recoverable).
-		//   2. Remove the global data dir (state, db, subdirs).
-		if err := inst.backupOpenCodeConfig(); err != nil {
-			return fmt.Errorf("backup before full uninstall: %w", err)
-		}
-		if err := inst.removePlanAIFromOpenCode(); err != nil {
-			return fmt.Errorf("remove plan-ai from opencode: %w", err)
-		}
+		// Full uninstall — remove the global data dir (state, db, subdirs).
+		// OpenCode config cleanup is handled by the CLI layer with AllowReal guard.
 		if err := os.RemoveAll(inst.DataDir); err != nil {
 			return fmt.Errorf("remove data dir: %w", err)
 		}
@@ -320,24 +312,17 @@ func (inst *Installer) Uninstall(components []string) error {
 	}
 	inst.State.UpdatedAt = timeNowUTC()
 
-	// Clean up OpenCode config if removing mcp or opencode-agent
-	removeOC := false
-	for _, c := range components {
-		if c == CompMCP || c == CompOpenCode {
-			removeOC = true
-			break
-		}
-	}
-	if removeOC {
-		if err := inst.backupOpenCodeConfig(); err != nil {
-			return fmt.Errorf("backup before uninstall: %w", err)
-		}
-		if err := inst.removePlanAIFromOpenCode(); err != nil {
-			return fmt.Errorf("remove plan-ai from opencode: %w", err)
-		}
-	}
-
 	return inst.SaveState()
+}
+
+// RemovePlanAIFromOpenConfig strips the plan-ai MCP entry from the
+// OpenCode config file. Callers must ensure AllowReal safety before
+// invoking this on the real ~/.config/opencode/.
+func (inst *Installer) RemovePlanAIFromOpenConfig() error {
+	if err := inst.backupOpenCodeConfig(); err != nil {
+		return fmt.Errorf("backup before opencode cleanup: %w", err)
+	}
+	return inst.removePlanAIFromOpenCode()
 }
 
 // ── doctor ──────────────────────────────────────────────

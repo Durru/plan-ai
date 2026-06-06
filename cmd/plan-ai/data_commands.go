@@ -1673,8 +1673,10 @@ func newMemoryAddCommand() *cobra.Command {
 			defer db.Close()
 
 			svc := memory.NewService(store.NewMemoryRepository(db))
+			pRoot, pErr := projectRoot()
+			if pErr != nil { return pErr }
 			entry, err := svc.Add(memory.AddInput{
-				ProjectID: store.ProjectID(projectRoot()),
+				ProjectID: store.ProjectID(pRoot),
 				EntryType: et,
 				Title:     title,
 				Question:  question,
@@ -1712,7 +1714,9 @@ func newMemoryListCommand() *cobra.Command {
 			defer db.Close()
 
 			svc := memory.NewService(store.NewMemoryRepository(db))
-			entries, err := svc.List(store.ProjectID(projectRoot()))
+			pRoot, pErr := projectRoot()
+			if pErr != nil { return pErr }
+			entries, err := svc.List(store.ProjectID(pRoot))
 			if err != nil {
 				return err
 			}
@@ -1746,7 +1750,9 @@ func newMemoryAskCommand() *cobra.Command {
 			defer db.Close()
 
 			svc := memory.NewService(store.NewMemoryRepository(db))
-			entry, reused, err := svc.Ask(store.ProjectID(projectRoot()), question)
+			pRoot, pErr := projectRoot()
+			if pErr != nil { return pErr }
+			entry, reused, err := svc.Ask(store.ProjectID(pRoot), question)
 			if err != nil {
 				return err
 			}
@@ -1773,13 +1779,11 @@ func newMemoryAskCommand() *cobra.Command {
 	return cmd
 }
 
-// projectRoot returns the resolved project root or panics (safe for cobra RunE).
-func projectRoot() string {
-	root, err := resolveProjectRoot()
-	if err != nil {
-		panic(err)
-	}
-	return root
+// projectRoot returns the resolved project root and any error.
+// Prefer resolveProjectRoot() directly in new code. This is kept for
+// backward compatibility with callers that already use it.
+func projectRoot() (string, error) {
+	return resolveProjectRoot()
 }
 
 func truncateTo(s string, max int) string {

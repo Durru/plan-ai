@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/plan-ai/plan-ai/internal/capabilities"
@@ -59,15 +60,19 @@ func formatTime(t time.Time) string {
 }
 
 var (
-	sharedProjectStore   *store.ProjectStore
-	sharedProjectRoot    string
-	sharedProjectClosed  bool
+	sharedProjectMu     sync.Mutex
+	sharedProjectStore  *store.ProjectStore
+	sharedProjectRoot   string
+	sharedProjectClosed bool
 )
 
 // SetSharedProjectStore opens and caches a project store that will be reused
 // by openStore for the same project root. Callers should call
 // CloseSharedProjectStore when the process is done.
 func SetSharedProjectStore(projectRoot string) error {
+	sharedProjectMu.Lock()
+	defer sharedProjectMu.Unlock()
+
 	ps, err := store.OpenProjectStore(projectRoot)
 	if err != nil {
 		return fmt.Errorf("open shared store: %w", err)
@@ -83,6 +88,9 @@ func SetSharedProjectStore(projectRoot string) error {
 
 // CloseSharedProjectStore closes the shared project store if one is open.
 func CloseSharedProjectStore() error {
+	sharedProjectMu.Lock()
+	defer sharedProjectMu.Unlock()
+
 	if sharedProjectStore != nil && !sharedProjectClosed {
 		sharedProjectClosed = true
 		return sharedProjectStore.Close()
@@ -91,12 +99,15 @@ func CloseSharedProjectStore() error {
 }
 
 // openStore opens the project store for the given root path.
-// Returns the store, a cleanup function (call via defer cleanup()), and any error.
-// If a shared store is active for this project root, the cleanup is a no-op.
 func openStore(projectRoot string) (*store.ProjectStore, func(), error) {
+	sharedProjectMu.Lock()
 	if sharedProjectStore != nil && sharedProjectRoot == projectRoot && !sharedProjectClosed {
-		return sharedProjectStore, func() {}, nil
+		ps := sharedProjectStore
+		sharedProjectMu.Unlock()
+		return ps, func() {}, nil
 	}
+	sharedProjectMu.Unlock()
+
 	ps, err := store.OpenProjectStore(projectRoot)
 	if err != nil {
 		return nil, nil, err

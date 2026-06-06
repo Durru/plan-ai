@@ -75,6 +75,9 @@ func readFramedMessage(r *bufio.Reader) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid Content-Length %q: %w", value, err)
 			}
+			if length > 10*1024*1024 { // 10 MB max to prevent memory exhaustion
+				return nil, fmt.Errorf("Content-Length %d exceeds maximum 10 MB", length)
+			}
 			contentLength = length
 		}
 	}
