@@ -1048,6 +1048,21 @@ CREATE TABLE IF NOT EXISTS approved_context (
 );
 CREATE INDEX IF NOT EXISTS idx_approved_context_project ON approved_context(project_id);
 CREATE INDEX IF NOT EXISTS idx_approved_context_type ON approved_context(approved_type);
+
+-- Migrate data from 6 legacy approved_* tables into the unified approved_context table.
+-- Idempotent: INSERT OR IGNORE skips duplicates on the UNIQUE(project_id, approved_type, content) constraint.
+INSERT OR IGNORE INTO approved_context (id, project_id, approved_type, source_id, content, state, supersedes_id, created_at, updated_at)
+SELECT id, project_id, 'requirement', source_id, content, state, COALESCE(supersedes_id, ''), created_at, updated_at FROM approved_requirements;
+INSERT OR IGNORE INTO approved_context (id, project_id, approved_type, source_id, content, state, supersedes_id, created_at, updated_at)
+SELECT id, project_id, 'constraint', source_id, content, state, COALESCE(supersedes_id, ''), created_at, updated_at FROM approved_constraints;
+INSERT OR IGNORE INTO approved_context (id, project_id, approved_type, source_id, content, state, supersedes_id, created_at, updated_at)
+SELECT id, project_id, 'decision', source_id, content, state, COALESCE(supersedes_id, ''), created_at, updated_at FROM approved_decisions;
+INSERT OR IGNORE INTO approved_context (id, project_id, approved_type, source_id, content, state, supersedes_id, created_at, updated_at)
+SELECT id, project_id, 'preference', source_id, content, state, COALESCE(supersedes_id, ''), created_at, updated_at FROM approved_preferences;
+INSERT OR IGNORE INTO approved_context (id, project_id, approved_type, source_id, content, state, supersedes_id, created_at, updated_at)
+SELECT id, project_id, 'reference', source_id, content, state, COALESCE(supersedes_id, ''), created_at, updated_at FROM approved_references;
+INSERT OR IGNORE INTO approved_context (id, project_id, approved_type, source_id, content, state, supersedes_id, created_at, updated_at)
+SELECT id, project_id, 'goal', source_id, content, state, COALESCE(supersedes_id, ''), created_at, updated_at FROM approved_goals;
 CREATE INDEX IF NOT EXISTS idx_entity_states_project ON entity_states(project_id);
 CREATE INDEX IF NOT EXISTS idx_entity_states_type ON entity_states(entity_type);
 CREATE INDEX IF NOT EXISTS idx_entity_states_status ON entity_states(status);
