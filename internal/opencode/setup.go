@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/plan-ai/plan-ai/internal/atomicfile"
@@ -527,7 +529,23 @@ func (s *SetupService) writeSyncMarker(projectRoot, opencodeDir string, result *
 //
 // A backup is created before writing, and the write is atomic.
 // This implements ADR 0021 (Safe OpenCode Auto-Configuration).
-func SetupMCPConfig(homeRoot string, binDir string) (backupPath string, err error) {
+//
+// The allowReal parameter must be true to write to the user's real
+// ~/.config/opencode/ directory. When false, the function only writes
+// when $OPENCODE_CONFIG_DIR is set (sandbox mode). This is defense-in-depth:
+// even if callers forget their own AllowReal guard, SetupMCPConfig itself
+// refuses to touch the real OpenCode config.
+func SetupMCPConfig(homeRoot string, binDir string, allowReal bool) (backupPath string, err error) {
+	if !allowReal && os.Getenv("OPENCODE_CONFIG_DIR") == "" {
+		if u, uErr := user.Current(); uErr == nil {
+			realOCDir := filepath.Join(u.HomeDir, ".config", "opencode")
+			ocDir := opencodeConfigDir(homeRoot)
+			if ocDir == realOCDir || strings.HasPrefix(ocDir, realOCDir) {
+				return "", fmt.Errorf("refusing to write to real OpenCode config at %s without OPENCODE_CONFIG_DIR; set OPENCODE_CONFIG_DIR for sandbox use or pass allowReal=true", ocDir)
+			}
+		}
+	}
+
 	configDir := opencodeConfigDir(homeRoot)
 
 	// Write to opencode.json (the file OpenCode reads at startup).

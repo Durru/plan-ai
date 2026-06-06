@@ -21,11 +21,8 @@ const opencodeSchemaURL = "https://opencode.ai/config.json"
 var invalidOpenCodeKeys = map[string]bool{}
 
 // syncOpenCodeConfig is a thin wrapper that delegates to opencode.SetupMCPConfig.
-// It derives homeRoot from ocDir by going two levels up (ocDir = homeRoot/.config/opencode).
-// The backup path produced by the atomic write is discarded here; callers that
-// need it (e.g. CLI commands) should call opencode.SetupMCPConfig directly.
-func syncOpenCodeConfig(homeRoot, binDir string) error {
-	_, err := opencode.SetupMCPConfig(homeRoot, binDir)
+func syncOpenCodeConfig(homeRoot, binDir string, allowReal bool) error {
+	_, err := opencode.SetupMCPConfig(homeRoot, binDir, allowReal)
 	return err
 }
 

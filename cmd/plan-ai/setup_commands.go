@@ -102,7 +102,7 @@ func newBootstrapCommand() *cobra.Command {
 			fmt.Fprintf(out, "  agent:           %s\n", result.AgentPath)
 
 			// Write unified MCP config
-			backupPath, err := opencode.SetupMCPConfig(home, "")
+			backupPath, err := opencode.SetupMCPConfig(home, "", allowReal)
 			if err != nil {
 				return fmt.Errorf("setup opencode mcp config: %w", err)
 			}
@@ -382,7 +382,7 @@ use, set OPENCODE_CONFIG_DIR instead.`,
 			// OPENCODE_CONFIG_DIR is set (sandbox). Without --allow-real-opencode
 			// we skip this step to avoid modifying the real OpenCode config.
 			if _, err := resolveOpenCodeConfigDirForWrite(allowReal); err == nil {
-				backupPath, err := opencode.SetupMCPConfig(home, "")
+				backupPath, err := opencode.SetupMCPConfig(home, "", allowReal)
 				if err != nil {
 					return fmt.Errorf("setup opencode mcp: %w", err)
 				}
@@ -473,7 +473,7 @@ All paths respect sandbox env vars:
 			if err != nil {
 				return fmt.Errorf("resolve home: %w", err)
 			}
-			backupPath, err := opencode.SetupMCPConfig(home, "")
+			backupPath, err := opencode.SetupMCPConfig(home, "", allowReal)
 			if err != nil {
 				return fmt.Errorf("setup mcp config: %w", err)
 			}

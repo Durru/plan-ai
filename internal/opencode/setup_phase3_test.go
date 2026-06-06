@@ -24,7 +24,7 @@ func TestSetupMCPConfig_BackupWhenConfigExists(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	backupPath, err := SetupMCPConfig(dir, "")
+	backupPath, err := SetupMCPConfig(dir, "", false) // false: test uses sandbox OPENCODE_CONFIG_DIR
 	if err != nil {
 		t.Fatalf("SetupMCPConfig: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestSetupMCPConfig_NoBackupWhenConfigAbsent(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("OPENCODE_CONFIG_DIR", dir)
 
-	backupPath, err := SetupMCPConfig(dir, "")
+	backupPath, err := SetupMCPConfig(dir, "", false) // false: test uses sandbox OPENCODE_CONFIG_DIR
 	if err != nil {
 		t.Fatalf("SetupMCPConfig: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestSetupMCPConfig_AtomicNoTempLeftover(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("OPENCODE_CONFIG_DIR", dir)
 
-	if _, err := SetupMCPConfig(dir, ""); err != nil {
+	if _, err := SetupMCPConfig(dir, "", false); err != nil {
 		t.Fatalf("SetupMCPConfig: %v", err)
 	}
 

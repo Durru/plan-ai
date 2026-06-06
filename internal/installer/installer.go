@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"time"
 
@@ -579,21 +578,9 @@ func (inst *Installer) syncOpenCodeConfig(opts InstallOptions) error {
 		return fmt.Errorf("cannot determine OpenCode config dir")
 	}
 
-	if !opts.AllowReal {
-		// Refuse to write to the user's actual ~/.config/opencode. We
-		// compare against the OS-level real home (getpwuid_r) so that a
-		// sandboxed or test HOME does not trip the safety check.
-		if u, err := user.Current(); err == nil {
-			realOCDir := filepath.Join(u.HomeDir, ".config", "opencode")
-			if ocDir == realOCDir {
-				return fmt.Errorf("refusing to write to %s without --allow-real-opencode flag", ocDir)
-			}
-		}
-	}
-
-	// Use the existing opencode.SetupService for the actual config generation
-	// We'll call a helper function defined in sync.go
-	return syncOpenCodeConfig(inst.HomeDir, opts.BinDir)
+	// AllowReal guard is now inside opencode.SetupMCPConfig itself (getpwuid_r).
+	// No duplicate check needed here — pass AllowReal through.
+	return syncOpenCodeConfig(inst.HomeDir, opts.BinDir, opts.AllowReal)
 }
 
 // removePlanAIFromOpenCode strips Plan-AI entries from the OpenCode config.
