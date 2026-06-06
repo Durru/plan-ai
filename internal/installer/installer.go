@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/plan-ai/plan-ai/internal/store"
 )
 
 // stateVersion is the current schema version for state.json.
@@ -593,7 +595,10 @@ type nopCloser struct{}
 
 func (n *nopCloser) Close() error { return nil }
 
-// runMigrations is a placeholder for the real migration logic.
 var runMigrations = func(db interface{}) error {
-	return nil // no-op for now
+	d, ok := db.(*sql.DB)
+	if !ok || d == nil {
+		return fmt.Errorf("invalid db for migrations")
+	}
+	return store.RunProjectMigrations(d)
 }

@@ -164,7 +164,7 @@ func (s *SetupService) writeWorkflows(opencodeDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal workflows: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := atomicfile.WriteFile(path, data, 0644); err != nil {
 		return "", fmt.Errorf("write workflows: %w", err)
 	}
 	return path, nil
@@ -345,7 +345,7 @@ func (s *SetupService) writeMCPRegistry(opencodeDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal mcp registry: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := atomicfile.WriteFile(path, data, 0644); err != nil {
 		return "", fmt.Errorf("write mcp registry: %w", err)
 	}
 
@@ -419,7 +419,7 @@ func (s *SetupService) writeAgentRegistration(opencodeDir string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("marshal agent: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := atomicfile.WriteFile(path, data, 0644); err != nil {
 		return "", fmt.Errorf("write agent: %w", err)
 	}
 
@@ -445,7 +445,7 @@ func (s *SetupService) writeProfiles(opencodeDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal profiles: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := atomicfile.WriteFile(path, data, 0644); err != nil {
 		return "", fmt.Errorf("write profiles: %w", err)
 	}
 
@@ -478,7 +478,7 @@ func (s *SetupService) writePrompts(opencodeDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal prompts: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := atomicfile.WriteFile(path, data, 0644); err != nil {
 		return "", fmt.Errorf("write prompts: %w", err)
 	}
 

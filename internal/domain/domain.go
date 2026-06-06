@@ -67,6 +67,8 @@ const (
 // Research-specific types (legacy compatibility)
 // ──────────────────────────────────────────────
 
+// Deprecated: Use research.ResearchStatus from internal/research/ instead.
+// This is kept for legacy store compatibility only.
 type ResearchStatus string
 
 const (
@@ -77,6 +79,8 @@ const (
 	ResearchStatusArchived ResearchStatus = "archived"
 )
 
+// Deprecated: Use research.ResearchSourceType from internal/research/ instead.
+// This is kept for legacy store compatibility only.
 type ResearchSourceType string
 
 const (

@@ -76,13 +76,15 @@ func (s *StatusService) findNextTask(projectID string) string {
 
 func (s *StatusService) countRecentEvents(projectID string) int {
 	var count int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM continuous_events WHERE project_id = ?`, projectID).Scan(&count)
+	// best-effort: if the table doesn't exist yet, count stays 0
+	s.db.QueryRow(`SELECT COUNT(*) FROM continuous_events WHERE project_id = ?`, projectID).Scan(&count)
 	return count
 }
 
 func (s *StatusService) countPendingProposals(projectID string) int {
 	var count int
-	_ = s.db.QueryRow(
+	// best-effort: if the table doesn't exist yet, count stays 0
+	s.db.QueryRow(
 		`SELECT COUNT(*) FROM plan_update_proposals WHERE project_id = ? AND status IN ('draft', 'pending_approval')`,
 		projectID).Scan(&count)
 	return count
@@ -131,7 +133,8 @@ func (s *StatusService) findApprovalsNeeded(projectID string) []string {
 func (s *StatusService) findOutdatedPlans(projectID string) []string {
 	// Check for events that typically make plans outdated
 	var eventCount int
-	_ = s.db.QueryRow(
+	// best-effort: if the table doesn't exist yet, count stays 0
+	s.db.QueryRow(
 		`SELECT COUNT(*) FROM continuous_events
 		 WHERE project_id = ? AND event_type IN (?, ?, ?)
 		 AND created_at > (SELECT COALESCE(MIN(created_at), '1970-01-01') FROM plan_update_proposals WHERE project_id = ? AND status = 'applied')`,
@@ -179,9 +182,10 @@ func (g *ContextGenerator) generateL0(projectID string) (string, error) {
 	b.WriteString("# Executive Summary\n\n")
 
 	var planCount, taskCount, decisionCount int
-	_ = g.db.QueryRow(`SELECT COUNT(*) FROM master_plans WHERE project_id = ?`, projectID).Scan(&planCount)
-	_ = g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status IN ('pending', 'draft')`, projectID).Scan(&taskCount)
-	_ = g.db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE project_id = ?`, projectID).Scan(&decisionCount)
+	// best-effort: if a table doesn't exist yet, count stays 0
+	g.db.QueryRow(`SELECT COUNT(*) FROM master_plans WHERE project_id = ?`, projectID).Scan(&planCount)
+	g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status IN ('pending', 'draft')`, projectID).Scan(&taskCount)
+	g.db.QueryRow(`SELECT COUNT(*) FROM decisions WHERE project_id = ?`, projectID).Scan(&decisionCount)
 
 	b.WriteString(fmt.Sprintf("**Plans**: %d  \n", planCount))
 	b.WriteString(fmt.Sprintf("**Pending tasks**: %d  \n", taskCount))
@@ -189,7 +193,8 @@ func (g *ContextGenerator) generateL0(projectID string) (string, error) {
 	b.WriteString(fmt.Sprintf("**Progress**: %s  \n", g.progressIndicator(projectID)))
 
 	nextTask := ""
-	_ = g.db.QueryRow(`SELECT title FROM tasks WHERE project_id = ? AND status IN ('pending', 'draft') ORDER BY position, created_at LIMIT 1`, projectID).Scan(&nextTask)
+	// best-effort: if no tasks exist, nextTask stays empty
+	g.db.QueryRow(`SELECT title FROM tasks WHERE project_id = ? AND status IN ('pending', 'draft') ORDER BY position, created_at LIMIT 1`, projectID).Scan(&nextTask)
 	if nextTask != "" {
 		b.WriteString(fmt.Sprintf("\n**Next step**: %s\n", nextTask))
 	} else {
@@ -198,7 +203,8 @@ func (g *ContextGenerator) generateL0(projectID string) (string, error) {
 
 	// Blockers
 	var blockers int
-	_ = g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'blocked'`, projectID).Scan(&blockers)
+	// best-effort: if the table doesn't exist yet, count stays 0
+	g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'blocked'`, projectID).Scan(&blockers)
 	if blockers > 0 {
 		b.WriteString(fmt.Sprintf("\n**Blockers**: %d task(s) blocked\n", blockers))
 	}
@@ -437,8 +443,9 @@ func (g *ContextGenerator) generateL4(projectID string) (string, error) {
 
 func (g *ContextGenerator) progressIndicator(projectID string) string {
 	var total, completed int
-	_ = g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ?`, projectID).Scan(&total)
-	_ = g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'completed'`, projectID).Scan(&completed)
+	// best-effort: if the table doesn't exist yet, count stays 0
+	g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ?`, projectID).Scan(&total)
+	g.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'completed'`, projectID).Scan(&completed)
 	if total == 0 {
 		return "Not started"
 	}

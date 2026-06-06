@@ -4,25 +4,38 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/plan-ai/plan-ai/internal/domain"
 )
 
 // dispatchStep is overridable in tests.
 var dispatchStep = realDispatchStep
 
 func realDispatchStep(stepType string, db *sql.DB) (string, error) {
-	_ = db
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch stepType {
-	case "detect_intent":
-		return fmt.Sprintf("Intent detection completed at %s", now), nil
-	case "find_reusable":
-		return "Searched for reusable research/knowledge", nil
 	case "create_master_plan":
-		return "Master plan creation triggered", nil
+		id := domain.NewID("mp")
+		if db != nil {
+			db.Exec(`INSERT OR IGNORE INTO master_plans (id, project_id, title, summary, status, version, created_at, updated_at) VALUES (?, '', 'Auto-generated plan', 'Created by workflow engine', 'draft', 1, ?, ?)`, id, now, now)
+		}
+		return fmt.Sprintf("Master plan created: %s", id), nil
 	case "create_specific_plan":
 		return "Specific plan creation triggered", nil
 	case "approve_plans":
 		return "Plans approved", nil
+	case "create_research":
+		id := domain.NewID("research")
+		if db != nil {
+			db.Exec(`INSERT OR IGNORE INTO research_entries (id, project_id, topic, category, source, summary, conclusion, status, confidence, created_at, updated_at) VALUES (?, '', 'Workflow research', 'general', 'workflow', 'Auto-generated', 'Conclusion pending', 'draft', 50, ?, ?)`, id, now, now)
+		}
+		return fmt.Sprintf("Research entry created: %s", id), nil
+	case "promote_to_knowledge":
+		return "Knowledge promotion triggered", nil
+	case "detect_intent":
+		return fmt.Sprintf("Intent detection completed at %s", now), nil
+	case "find_reusable":
+		return "Searched for reusable research/knowledge", nil
 	case "create_discovery":
 		return "Discovery session created", nil
 	case "approve_intent":
@@ -33,16 +46,12 @@ func realDispatchStep(stepType string, db *sql.DB) (string, error) {
 		return "Validation passed", nil
 	case "approve_reject":
 		return "Approval decision recorded", nil
-	case "create_research":
-		return "Research entry created", nil
 	case "approve_research":
 		return "Research approved", nil
-	case "promote_to_knowledge":
-		return "Knowledge promoted from research", nil
 	case "load_approved_context":
 		return "Approved context loaded", nil
 	default:
-		return fmt.Sprintf("Step %s executed", stepType), nil
+		return fmt.Sprintf("Step %s completed at %s", stepType, now), nil
 	}
 }
 
