@@ -451,7 +451,13 @@ func HandleCreateSpecificPlan(args map[string]any) (map[string]any, error) {
 	planningRepo := store.NewPlanningRepository(ps.DB)
 	svc := planning.NewService(planningRepo)
 	masterPlanID := getStringArg(args, "master_plan_id")
+	if masterPlanID == "" {
+		return map[string]any{"error": "master_plan_id is required"}, nil
+	}
 	goal := getStringArg(args, "goal")
+	if goal == "" {
+		return map[string]any{"error": "goal is required"}, nil
+	}
 	title := getStringArg(args, "title")
 
 	plan, err := svc.CreateSpecificPlan(masterPlanID, planning.SpecificPlanInput{
@@ -528,6 +534,9 @@ func HandleApprovePlan(args map[string]any) (map[string]any, error) {
 
 	repos := store.NewRepositories(ps.DB)
 	planID := getStringArg(args, "plan_id")
+	if planID == "" {
+		return nil, fmt.Errorf("plan_id is required")
+	}
 
 	if err := repos.Plan.UpdatePlanStatus(planID, domain.StatusApproved); err != nil {
 		return nil, fmt.Errorf("approve plan: %w", err)
@@ -553,6 +562,9 @@ func HandleRejectPlan(args map[string]any) (map[string]any, error) {
 
 	repos := store.NewRepositories(ps.DB)
 	planID := getStringArg(args, "plan_id")
+	if planID == "" {
+		return nil, fmt.Errorf("plan_id is required")
+	}
 
 	if err := repos.Plan.UpdatePlanStatus(planID, domain.StatusRejected); err != nil {
 		return nil, fmt.Errorf("reject plan: %w", err)
@@ -657,6 +669,9 @@ func HandleMarkTaskDone(args map[string]any) (map[string]any, error) {
 
 	repos := store.NewRepositories(ps.DB)
 	taskID := getStringArg(args, "task_id")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
 
 	if err := repos.Task.UpdateStatus(taskID, domain.PlanStatusDone); err != nil {
 		return nil, fmt.Errorf("update task status: %w", err)
@@ -1313,6 +1328,9 @@ func HandleUpdatePlan(args map[string]any) (map[string]any, error) {
 
 	repos := store.NewRepositories(ps.DB)
 	planID := getStringArg(args, "plan_id")
+	if planID == "" {
+		return nil, fmt.Errorf("plan_id is required")
+	}
 	newTitle := getStringArg(args, "title")
 	newSummary := getStringArg(args, "summary")
 	newStatus := getStringArg(args, "status")
@@ -1411,7 +1429,9 @@ func HandleRollbackSnapshot(args map[string]any) (map[string]any, error) {
 	snapV2, err := store.NewSnapshotV2Repository(ps.DB).GetByID(snapshotID)
 	if err == nil && snapV2.EntitySnapshot != "" && snapV2.EntitySnapshot != "{}" {
 		var entities map[string]any
-		_ = json.Unmarshal([]byte(snapV2.EntitySnapshot), &entities)
+		if err := json.Unmarshal([]byte(snapV2.EntitySnapshot), &entities); err != nil {
+			return map[string]any{"error": fmt.Sprintf("invalid entity snapshot: %v", err)}, nil
+		}
 		restored := 0
 		if plans, ok := entities["plans"].([]any); ok {
 			for _, p := range plans {

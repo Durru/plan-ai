@@ -54,6 +54,10 @@ func ProjectSlug(rootPath string) string {
 	return "project_" + slug
 }
 
+func MCPRegistryPath(homeDir string) string {
+	return filepath.Join(GlobalDir(homeDir), "mcp-registry.json")
+}
+
 func GlobalDir(homeDir string) string {
 	return filepath.Join(homeDir, ".plan-ai")
 }

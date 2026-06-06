@@ -3,6 +3,7 @@ package capabilities
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"sort"
 )
 
@@ -21,7 +22,9 @@ func NewRegistry(db *sql.DB) *Registry {
 		r.repo = NewRepository(db)
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM capabilities_v2").Scan(&count); err == nil && count == 0 {
-			_ = SeedDefaults(db)
+			if err := SeedDefaults(db); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: seed defaults: %v\n", err)
+			}
 		}
 	} else {
 		r.mem = make(map[CapabilityType]Capability)
@@ -33,7 +36,9 @@ func NewRegistry(db *sql.DB) *Registry {
 func NewDefaultRegistry(db *sql.DB) *Registry {
 	r := NewRegistry(db)
 	if db != nil {
-		_ = SeedDefaults(db)
+		if err := SeedDefaults(db); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: seed defaults: %v\n", err)
+		}
 	}
 	return r
 }

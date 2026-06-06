@@ -3,6 +3,7 @@ package continuous
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/plan-ai/plan-ai/internal/domain"
@@ -148,8 +149,10 @@ func (s *LoopService) recordMemory(projectID, eventType, summary string) {
 	}
 	id := domain.NewID("mem")
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, _ = s.db.Exec(`INSERT INTO project_memory_v2 (id, project_id, entry_type, title, content, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, projectID, "change", truncate80(summary), summary, eventType, "active", now, now)
+	if _, err := s.db.Exec(`INSERT INTO project_memory_v2 (id, project_id, entry_type, title, content, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, projectID, "change", truncate80(summary), summary, eventType, "active", now, now); err != nil {
+		fmt.Fprintf(os.Stderr, "memory record: %v\n", err)
+	}
 }
 
 func truncate80(s string) string {

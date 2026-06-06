@@ -22,11 +22,11 @@ type ToolRegistry struct {
 	path  string
 }
 
-// NewToolRegistry creates a tool registry stored at the given path.
+// NewToolRegistry creates a tool registry stored under ~/.plan-ai/mcp-registry.json.
 func NewToolRegistry(homeRoot string) *ToolRegistry {
 	return &ToolRegistry{
 		items: []RegistryItem{},
-		path:  filepath.Join(homeRoot, "mcp-registry.json"),
+		path:  filepath.Join(homeRoot, ".plan-ai", "mcp-registry.json"),
 	}
 }
 
@@ -49,8 +49,11 @@ func (r *ToolRegistry) List() []RegistryItem {
 	return r.items
 }
 
-// Save persists the registry to disk.
+// Save persists the registry to disk, creating parent directories if needed.
 func (r *ToolRegistry) Save() error {
+	if err := os.MkdirAll(filepath.Dir(r.path), 0755); err != nil {
+		return fmt.Errorf("create registry dir: %w", err)
+	}
 	data, err := json.MarshalIndent(r.items, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)

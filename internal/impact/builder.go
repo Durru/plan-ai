@@ -26,8 +26,6 @@ func BuildFromEntityLinks(db *sql.DB, projectID string) error {
 			return err
 		}
 
-		_ = createdAt
-
 		edge := Edge{
 			ID:         uuid.New().String(),
 			SourceID:   sourceID,

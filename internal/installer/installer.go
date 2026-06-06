@@ -237,8 +237,10 @@ type SyncPlan struct {
 	OpenCodeNew string  // new opencode config content (empty if no change)
 }
 
-// PreviewSync generates a plan of what Sync would change, without writing anything.
-// Returns nil plan (not error) if there's nothing to sync.
+// PreviewSync generates the proposed opencode config without persisting it.
+// Returns the JSON content that would be written and a plan of file changes.
+// Note: if the existing config is unparseable, a backup file (.invalid.*) may
+// be created. Returns nil plan (not error) if there's nothing to sync.
 func (inst *Installer) PreviewSync() (*SyncPlan, error) {
 	if inst.State == nil {
 		if err := inst.LoadState(); err != nil {
