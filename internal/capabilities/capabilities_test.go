@@ -104,20 +104,39 @@ func TestListCapabilities(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
 	r := capabilities.NewRegistry(db)
-	if len(r.ListCapabilities()) != 0 {
-		t.Fatal("new empty registry should have 0 capabilities")
+	// After auto-seeding, registry has 11 default capabilities
+	base := len(r.ListCapabilities())
+	if base != 11 {
+		t.Fatalf("seeded registry should have 11 capabilities, got %d", base)
 	}
 
-	r.RegisterCapability(capabilities.Capability{Type: "b", Name: "b"})
-	r.RegisterCapability(capabilities.Capability{Type: "a", Name: "a"})
-	r.RegisterCapability(capabilities.Capability{Type: "c", Name: "c"})
+	r.RegisterCapability(capabilities.Capability{Type: "b", Name: "b", Enabled: true})
+	r.RegisterCapability(capabilities.Capability{Type: "a", Name: "a", Enabled: true})
+	r.RegisterCapability(capabilities.Capability{Type: "c", Name: "c", Enabled: true})
 
 	list := r.ListCapabilities()
-	if len(list) != 3 {
-		t.Fatalf("len = %d, want 3", len(list))
+	if len(list) != base+3 {
+		t.Fatalf("len = %d, want %d", len(list), base+3)
 	}
-	if list[0].Type != "a" || list[1].Type != "b" || list[2].Type != "c" {
-		t.Errorf("order: %v", list)
+	// Verify sorting within the new items
+	found := []string{}
+	for _, c := range list {
+		found = append(found, c.Name)
+	}
+	// a, b, c must be in order among themselves
+	idxA, idxB, idxC := -1, -1, -1
+	for i, name := range found {
+		switch name {
+		case "a":
+			idxA = i
+		case "b":
+			idxB = i
+		case "c":
+			idxC = i
+		}
+	}
+	if idxA >= idxB || idxB >= idxC {
+		t.Errorf("custom items not sorted: a=%d b=%d c=%d", idxA, idxB, idxC)
 	}
 }
 

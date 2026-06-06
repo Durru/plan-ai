@@ -359,13 +359,49 @@ func (e *DeliveryEngine) buildImplementationContext(projectID, taskID string, bu
 		for _, c := range constraints {
 			b.WriteString(fmt.Sprintf("- %s\n", c.Content))
 		}
+		b.WriteString("\n")
 	}
 
 	decisions, err := e.implData.ListApproved(projectID, TypeDecision)
 	if err == nil && len(decisions) > 0 {
-		b.WriteString("\n## Decisions\n")
+		b.WriteString("## Decisions\n")
 		for _, d := range decisions {
 			b.WriteString(fmt.Sprintf("- %s\n", d.Content))
+		}
+		b.WriteString("\n")
+	}
+
+	// Expected Files
+	b.WriteString("## Expected Files\n")
+	plan, err := e.implData.GetSpecificPlan(taskID)
+	if err == nil && plan.Title != "" {
+		b.WriteString(fmt.Sprintf("- Files from plan: %s\n", plan.Title))
+	} else {
+		b.WriteString("- TBD from specific plan\n")
+	}
+	b.WriteString("\n")
+
+	// Validations
+	b.WriteString("## Validations\n")
+	b.WriteString("- go test ./...\n")
+	b.WriteString("- go vet ./...\n")
+	b.WriteString("- go build ./...\n\n")
+
+	// Known Risks
+	b.WriteString("## Known Risks\n")
+	b.WriteString("- No risks identified yet\n\n")
+
+	// Testing Strategy
+	b.WriteString("## Testing Strategy\n")
+	b.WriteString("- Unit tests with standard Go testing library\n")
+	b.WriteString("- Integration tests for cross-package interactions\n\n")
+
+	// Knowledge Objects
+	knowledge, err := e.researchData.ListKnowledgeBriefs(projectID)
+	if err == nil && len(knowledge) > 0 {
+		b.WriteString("## Knowledge Objects\n")
+		for _, k := range knowledge {
+			b.WriteString(fmt.Sprintf("- %s: %s\n", k.Topic, k.Summary))
 		}
 	}
 

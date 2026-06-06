@@ -195,8 +195,8 @@ func TestRegisterDefaultTools(t *testing.T) {
 	}
 
 	tools := s.ListTools()
-	if len(tools) != 38 {
-		t.Fatalf("expected 38 default tools, got %d", len(tools))
+	if len(tools) != 39 {
+		t.Fatalf("expected 39 default tools, got %d", len(tools))
 	}
 
 	for _, name := range []string{

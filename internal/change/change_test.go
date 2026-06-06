@@ -74,7 +74,7 @@ func TestClassifySeverity(t *testing.T) {
 }
 
 func TestEntityAnalyzer_AnalyzeChange(t *testing.T) {
-	a := NewAnalyzer()
+	a := NewAnalyzer(nil)
 	impact := a.AnalyzeChange(VisionChanged)
 	if !impact.ReviewRequired {
 		t.Fatal("VisionChanged should require review")
@@ -85,7 +85,7 @@ func TestEntityAnalyzer_AnalyzeChange(t *testing.T) {
 }
 
 func TestEntityAnalyzer_AffectedByChangeType(t *testing.T) {
-	a := NewAnalyzer()
+	a := NewAnalyzer(nil)
 	types := a.AffectedByChangeType(RequirementAdded)
 	if len(types) == 0 {
 		t.Fatal("RequirementAdded should affect at least one entity type")

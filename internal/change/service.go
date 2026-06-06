@@ -1,6 +1,7 @@
 package change
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -9,17 +10,21 @@ import (
 
 // Service implements ChangeEngine and orchestrates the full change lifecycle.
 type Service struct {
-	store ChangeStore
-	snaps SnapshotStore
-	rules []InvalidationRule
+	store    ChangeStore
+	snaps    SnapshotStore
+	db       *sql.DB
+	analyzer *EntityAnalyzer
+	rules    []InvalidationRule
 }
 
-// NewService creates a change service with the given stores and default rules.
-func NewService(store ChangeStore, snaps SnapshotStore) *Service {
+// NewService creates a change service with the given stores, database, and default rules.
+func NewService(store ChangeStore, snaps SnapshotStore, db *sql.DB) *Service {
 	return &Service{
-		store: store,
-		snaps: snaps,
-		rules: DefaultInvalidationRules,
+		store:    store,
+		snaps:    snaps,
+		db:       db,
+		analyzer: NewAnalyzer(db),
+		rules:    DefaultInvalidationRules,
 	}
 }
 
@@ -89,7 +94,8 @@ func (s *Service) AnalyzeImpact(changeID string) (*ImpactAnalysis, error) {
 	return s.analyze(ev)
 }
 
-// analyze computes the impact of a change event based on the invalidation rules.
+// analyze computes the impact of a change event based on invalidation rules
+// and entity_links data for transitive resolution.
 func (s *Service) analyze(ev *ChangeEvent) (*ImpactAnalysis, error) {
 	affected := &ImpactAnalysis{
 		ChangeID:       ev.ID,
@@ -105,6 +111,27 @@ func (s *Service) analyze(ev *ChangeEvent) (*ImpactAnalysis, error) {
 					affected.ReviewRequired = true
 				}
 				break
+			}
+		}
+	}
+
+	// Resolve real entity IDs from entity_links via the impact graph
+	resolved, err := s.analyzer.AnalyzeEntityLinks(ev.ProjectID, ev.EntityType, ev.EntityID)
+	if err != nil {
+		return nil, err
+	}
+	for _, group := range resolved {
+		existing := affected.AffectedTypes[group.EntityType]
+		for _, id := range group.EntityIDs {
+			found := false
+			for _, eid := range existing {
+				if eid == id {
+					found = true
+					break
+				}
+			}
+			if !found {
+				affected.AffectedTypes[group.EntityType] = append(affected.AffectedTypes[group.EntityType], id)
 			}
 		}
 	}

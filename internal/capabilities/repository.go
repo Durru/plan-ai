@@ -49,7 +49,7 @@ func (r *Repository) Save(c Capability) error {
 func (r *Repository) List() ([]Capability, error) {
 	rows, err := r.db.Query(
 		`SELECT id, name, description, schema_info, version, enabled, created_at
-		 FROM capabilities_v2 ORDER BY name`,
+		 FROM capabilities_v2 WHERE enabled = 1 ORDER BY name`,
 	)
 	if err != nil {
 		return nil, err
@@ -92,4 +92,35 @@ func (r *Repository) GetByName(name string) (Capability, error) {
 func (r *Repository) Delete(name string) error {
 	_, err := r.db.Exec(`DELETE FROM capabilities_v2 WHERE name = ?`, name)
 	return err
+}
+
+// SeedDefaults inserts the default capabilities into capabilities_v2.
+// Uses INSERT OR IGNORE for idempotency.
+func SeedDefaults(db *sql.DB) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	defaults := []struct {
+		id, name, desc string
+	}{
+		{domain.NewID("cap"), "vision", "Create vision drafts from ingested inputs"},
+		{domain.NewID("cap"), "research", "Perform research on topics with sources and findings"},
+		{domain.NewID("cap"), "planning", "Create master plans, specific plans, and implementation documents"},
+		{domain.NewID("cap"), "architecture", "Design system architecture and component relationships"},
+		{domain.NewID("cap"), "database", "Design database schemas, migrations, and queries"},
+		{domain.NewID("cap"), "backend", "Implement server-side logic and APIs"},
+		{domain.NewID("cap"), "frontend", "Implement client-side interfaces and interactions"},
+		{domain.NewID("cap"), "security", "Review code and architecture for security issues"},
+		{domain.NewID("cap"), "testing", "Write and execute tests for verification"},
+		{domain.NewID("cap"), "impact_analysis", "Analyze impact of changes on plans and decisions"},
+		{domain.NewID("cap"), "validation", "Validate plans, tasks, and implementations against criteria"},
+	}
+	for _, c := range defaults {
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO capabilities_v2 (id, name, description, schema_info, version, enabled, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			c.id, c.name, c.desc, "{}", "1.0", 1, now,
+		); err != nil {
+			return fmt.Errorf("seed capability %q: %w", c.name, err)
+		}
+	}
+	return nil
 }

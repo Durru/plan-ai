@@ -63,6 +63,11 @@ func (o *Orchestrator) CreateJob(projectID string, wfType WorkflowType, capabili
 	return o.jobs.CreateJob(job)
 }
 
+// GetJob returns a job by ID.
+func (o *Orchestrator) GetJob(id string) (Job, error) {
+	return o.jobs.GetJob(id)
+}
+
 // ExecuteJob transitions a job to running, executes it, and updates status.
 func (o *Orchestrator) ExecuteJob(jobID string) (Job, error) {
 	job, err := o.jobs.GetJob(jobID)

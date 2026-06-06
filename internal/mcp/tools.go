@@ -177,6 +177,19 @@ func allToolDefs(deps *ToolDependencies) []ToolDefinition {
 			},
 			Handler: makeHandler(deps, deps.ListTasks),
 		},
+		{
+			Name:        "plan_ai.run_workflow",
+			Description: "Run a workflow by type for a project. Orchestrator selects capability and strategy.",
+			Schema: JSONSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"project_root":  {Type: "string", Description: "Project root path"},
+					"workflow_type": {Type: "string", Description: "Workflow type (vision|research|planning|approval)", Required: true},
+				},
+				Required: []string{"workflow_type"},
+			},
+			Handler: makeHandler(deps, deps.RunWorkflow),
+		},
 	}
 
 	agentTools := []ToolDefinition{
@@ -603,6 +616,8 @@ type ToolDependencies struct {
 	// Phase 52: Discovery Engine
 	DiscoverIntent       func(args map[string]any) (map[string]any, error)
 	ListDiscoveryResults func(args map[string]any) (map[string]any, error)
+	// Orchestrator / Workflow Execution
+	RunWorkflow func(args map[string]any) (map[string]any, error)
 }
 
 func makeHandler(deps *ToolDependencies, fn func(args map[string]any) (map[string]any, error)) ToolHandlerFunc {

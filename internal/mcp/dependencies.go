@@ -35,5 +35,6 @@ func DefaultToolDependencies() ToolDependencies {
 		RejectProductIntent:  HandleRejectProductIntent,
 		DiscoverIntent:       HandleDiscoverIntent,
 		ListDiscoveryResults: HandleListDiscoveryResults,
+		RunWorkflow:          HandleRunWorkflow,
 	}
 }

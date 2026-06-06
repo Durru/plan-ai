@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
-	"time"
 )
 
 // Registry stores and manages available capabilities.
@@ -20,6 +19,10 @@ func NewRegistry(db *sql.DB) *Registry {
 	r := &Registry{db: db}
 	if db != nil {
 		r.repo = NewRepository(db)
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM capabilities_v2").Scan(&count); err == nil && count == 0 {
+			_ = SeedDefaults(db)
+		}
 	} else {
 		r.mem = make(map[CapabilityType]Capability)
 	}
@@ -29,22 +32,8 @@ func NewRegistry(db *sql.DB) *Registry {
 // NewDefaultRegistry creates a registry with all standard capabilities seeded.
 func NewDefaultRegistry(db *sql.DB) *Registry {
 	r := NewRegistry(db)
-	now := time.Now().UTC()
-	defaults := []Capability{
-		{Type: CapVision, Name: string(CapVision), Description: "Create vision drafts from ingested inputs", Enabled: true, CreatedAt: now},
-		{Type: CapResearch, Name: string(CapResearch), Description: "Perform research on topics with sources and findings", Enabled: true, CreatedAt: now},
-		{Type: CapPlanning, Name: string(CapPlanning), Description: "Create master plans, specific plans, and implementation documents", Enabled: true, CreatedAt: now},
-		{Type: CapArchitecture, Name: string(CapArchitecture), Description: "Design system architecture and component relationships", Enabled: true, CreatedAt: now},
-		{Type: CapDatabase, Name: string(CapDatabase), Description: "Design database schemas, migrations, and queries", Enabled: true, CreatedAt: now},
-		{Type: CapBackend, Name: string(CapBackend), Description: "Implement server-side logic and APIs", Enabled: true, CreatedAt: now},
-		{Type: CapFrontend, Name: string(CapFrontend), Description: "Implement client-side interfaces and interactions", Enabled: true, CreatedAt: now},
-		{Type: CapSecurity, Name: string(CapSecurity), Description: "Review code and architecture for security issues", Enabled: true, CreatedAt: now},
-		{Type: CapTesting, Name: string(CapTesting), Description: "Write and execute tests for verification", Enabled: true, CreatedAt: now},
-		{Type: CapImpactAnalysis, Name: string(CapImpactAnalysis), Description: "Analyze impact of changes on plans and decisions", Enabled: true, CreatedAt: now},
-		{Type: CapValidation, Name: string(CapValidation), Description: "Validate plans, tasks, and implementations against criteria", Enabled: true, CreatedAt: now},
-	}
-	for _, cap := range defaults {
-		_ = r.RegisterCapability(cap)
+	if db != nil {
+		_ = SeedDefaults(db)
 	}
 	return r
 }

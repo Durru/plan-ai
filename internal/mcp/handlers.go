@@ -8,10 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/plan-ai/plan-ai/internal/capabilities"
 	"github.com/plan-ai/plan-ai/internal/config"
 	"github.com/plan-ai/plan-ai/internal/conversation"
 	"github.com/plan-ai/plan-ai/internal/domain"
 	"github.com/plan-ai/plan-ai/internal/guard"
+	"github.com/plan-ai/plan-ai/internal/modelstrategy"
+	"github.com/plan-ai/plan-ai/internal/orchestrator"
 	"github.com/plan-ai/plan-ai/internal/planning"
 	"github.com/plan-ai/plan-ai/internal/store"
 )
@@ -1555,3 +1558,62 @@ func HandleExportDocs(args map[string]any) (map[string]any, error) {
 
 // Product intent and discovery engine handlers live in handlers_intent.go.
 // They use store repos directly (not intentv3.Service) as of Phase 15.
+
+// ── Orchestrator / Workflow Execution Handlers ──
+
+func HandleRunWorkflow(args map[string]any) (map[string]any, error) {
+	projectRoot, err := getProjectRoot(args)
+	if err != nil {
+		return nil, err
+	}
+
+	workflowType := getStringArg(args, "workflow_type")
+	if workflowType == "" {
+		return nil, fmt.Errorf("workflow_type is required")
+	}
+
+	wfType := orchestrator.WorkflowType(workflowType)
+	capability := workflowToCap(wfType)
+
+	ps, cleanup, err := openStore(projectRoot)
+	if err != nil {
+		return nil, fmt.Errorf("open project: %w", err)
+	}
+	defer cleanup()
+
+	capReg := capabilities.NewDefaultRegistry(ps.DB)
+	ms := modelstrategy.NewService()
+	jr := store.NewJobRepository(ps.DB)
+	rr := store.NewJobRunRepository(ps.DB)
+	orch := orchestrator.NewOrchestrator(capReg, ms, jr, rr)
+
+	pid := projectID(projectRoot)
+
+	job, err := orch.CreateJob(pid, wfType, capability)
+	if err != nil {
+		return nil, fmt.Errorf("create job: %w", err)
+	}
+
+	return map[string]any{
+		"job_id":        job.ID,
+		"status":        string(job.Status),
+		"workflow_type": string(job.WorkflowType),
+		"capability":    job.Capability,
+		"project_id":    job.ProjectID,
+	}, nil
+}
+
+func workflowToCap(wfType orchestrator.WorkflowType) string {
+	switch wfType {
+	case orchestrator.WorkflowVision:
+		return "vision"
+	case orchestrator.WorkflowResearch:
+		return "research"
+	case orchestrator.WorkflowPlanning:
+		return "planning"
+	case orchestrator.WorkflowApproval:
+		return "validation"
+	default:
+		return ""
+	}
+}

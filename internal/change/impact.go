@@ -10,7 +10,7 @@ type ImpactBuilder struct {
 
 // NewImpactBuilder creates an impact builder.
 func NewImpactBuilder() *ImpactBuilder {
-	return &ImpactBuilder{analyzer: NewAnalyzer()}
+	return &ImpactBuilder{analyzer: NewAnalyzer(nil)}
 }
 
 // Build constructs a detailed ImpactAnalysis for a change event.
