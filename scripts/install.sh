@@ -51,8 +51,13 @@ get_latest_version() {
     local response http_code
     response="$(curl -sL -w "\n%{http_code}" "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest")"
     http_code="$(echo "$response" | tail -n1)"
+    if [ "$http_code" = "404" ]; then
+        warn "No GitHub releases yet — falling back to go install"
+        install_go
+        exit 0
+    fi
     if [ "$http_code" != "200" ]; then
-        fatal "GitHub API returned HTTP $http_code. Rate limited? Try: curl ... | bash -s -- go"
+        fatal "GitHub API returned HTTP $http_code. Try: curl ... | bash -s -- go"
     fi
     LATEST_VERSION="$(echo "$response" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
     if [ -z "$LATEST_VERSION" ]; then
@@ -191,9 +196,10 @@ main() {
             echo "Usage: curl ... | bash [-s -- METHOD]"
             echo ""
             echo "Methods:"
-            echo "  binary  Pre-built binary from GitHub Releases (default)"
+            echo "  binary  Pre-built binary from GitHub Releases (default, auto-fallback to go)"
             echo "  go      go install from source"
             echo "  git     Clone and build from source"
+            echo "  -h      Show this help"
             exit 0
             ;;
         *) fatal "Unknown method: $METHOD. Use: binary, go, or git" ;;
