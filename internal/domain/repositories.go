@@ -66,7 +66,14 @@ type KnowledgeRepository interface {
 	Delete(id string) error
 }
 
-// PlanRepository defines persistence operations for MasterPlan and SpecificPlan entities.
+// PlanRepository defines persistence operations for MasterPlan and
+// SpecificPlan entities using the store-direct domain types.
+//
+// For service-level operations prefer planning.Repository from
+// internal/planning/, which uses canonical planning types with
+// richer fields (Objectives, Scope, Risks, etc.).
+// This interface uses Save* semantics while planning.Repository
+// uses Create*. Both are valid but serve different layers.
 type PlanRepository interface {
 	SaveMaster(plan MasterPlan) error
 	SaveSpecific(plan SpecificPlan) error

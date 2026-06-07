@@ -3,6 +3,7 @@ package repositories
 import (
 	"database/sql"
 	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/plan-ai/plan-ai/internal/research"
 	"strings"
 )
 
@@ -15,7 +16,7 @@ var _ domain.ResearchRepository = ResearchRepository{}
 func (r ResearchRepository) Save(x domain.Research) error {
 	x.ID = ensureID(x.ID, "research")
 	if x.Status == "" {
-		x.Status = domain.ResearchStatusDraft
+		x.Status = string(research.ResearchStatusDraft)
 	}
 	if x.Category == "" {
 		x.Category = domain.KnowledgeCategoryGeneral
@@ -76,7 +77,7 @@ func (r ResearchRepository) list(where string, args ...any) ([]domain.Research, 
 		}
 		x.Date = parse(d)
 		x.Category = domain.KnowledgeCategory(cat)
-		x.Status = domain.ResearchStatus(st)
+		x.Status = st
 		x.CreatedAt = parse(c)
 		x.UpdatedAt = parse(u)
 		out = append(out, x)

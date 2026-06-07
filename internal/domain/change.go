@@ -49,9 +49,13 @@ func IsValidChangeRequestTransition(from, to ChangeRequestStatus) bool {
 	return false
 }
 
-// ChangeRequest is a proposal to modify the project's plans,
+// ChangeRequest is the canonical change type for the unified change system.
+// It is a proposal to modify the project's plans,
 // decisions, or scope. It captures the reason for the change,
 // who requested it, and its current status.
+//
+// All other change representations (change_events, change_impact_reports_v2)
+// mirror data from this type for backward compatibility.
 type ChangeRequest struct {
 	ID          string
 	ProjectID   string

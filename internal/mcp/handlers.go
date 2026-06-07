@@ -1,5 +1,24 @@
 package mcp
 
+// Architectural note (Phase 15): Handlers currently use store.Repositories directly.
+// Future work: route through canonical services (planning.Service, research.Service,
+// context.AuthorityService) for v4 principle enforcement. The current pattern is
+// transitional — repos are used for read/write while services are gradually
+// introduced as the single authority.
+//
+// Handlers already transitioned:
+//   - HandleCreateMasterPlan, HandleCreateSpecificPlan: use planning.Service
+//
+// Handlers still pending transition:
+//   - HandleResearchTopic: uses repos.Research.Save directly
+//   - HandleApprovePlan, HandleRejectPlan: use repos.Plan.UpdatePlanStatus directly
+//     (continuous.LoopService deals with PlanUpdateProposal, not domain.Plan — not applicable)
+//   - HandleAnalyzeImpact, HandleListPlans, HandleGetPlan, HandleListTasks,
+//     HandleGetTask, HandleSnapshotProject, HandleRestoreSnapshot,
+//     HandleSearchAll, HandleUpdatePlanStatus, HandleChat,
+//     HandleGenerateKnowledge, HandleGenerateVisualContext, etc.
+//     — all still use repos.* directly for reads and writes.
+
 import (
 	"encoding/json"
 	"errors"
@@ -17,6 +36,7 @@ import (
 	"github.com/plan-ai/plan-ai/internal/modelstrategy"
 	"github.com/plan-ai/plan-ai/internal/orchestrator"
 	"github.com/plan-ai/plan-ai/internal/planning"
+	"github.com/plan-ai/plan-ai/internal/research"
 	"github.com/plan-ai/plan-ai/internal/store"
 )
 
@@ -393,6 +413,9 @@ func HandleCreateMasterPlan(args map[string]any) (map[string]any, error) {
 		visionRef = pid
 	}
 
+	// Transitional (Phase 15): routing through planning.Service instead of raw
+	// repos.Plan.SaveMaster. Full migration pending — service currently wraps
+	// the same repo with validation but lacks full v4 principle enforcement.
 	planningRepo := store.NewPlanningRepository(ps.DB)
 	svc := planning.NewService(planningRepo)
 
@@ -500,7 +523,7 @@ func HandleResearchTopic(args map[string]any) (map[string]any, error) {
 		Topic:      getStringArg(args, "topic"),
 		Summary:    getStringArg(args, "summary"),
 		Confidence: float64(getIntArg(args, "confidence")),
-		Status:     domain.ResearchStatusDraft,
+		Status:     string(research.ResearchStatusDraft),
 		Category:   domain.KnowledgeCategoryGeneral,
 		Date:       time.Now(),
 		CreatedAt:  time.Now(),
@@ -520,6 +543,10 @@ func HandleResearchTopic(args map[string]any) (map[string]any, error) {
 	}, nil
 }
 
+// HandleApprovePlan — pending Phase 15 transition.
+// Currently uses repos.Plan.UpdatePlanStatus directly.
+// planning.Service has no ApprovePlan method yet; continuous.LoopService.ApproveProposal
+// deals with PlanUpdateProposal (different entity) and is not applicable here.
 func HandleApprovePlan(args map[string]any) (map[string]any, error) {
 	projectRoot, err := getProjectRoot(args)
 	if err != nil {
@@ -548,6 +575,8 @@ func HandleApprovePlan(args map[string]any) (map[string]any, error) {
 	}, nil
 }
 
+// HandleRejectPlan — pending Phase 15 transition.
+// Same situation as HandleApprovePlan: repos.Plan.UpdatePlanStatus used directly.
 func HandleRejectPlan(args map[string]any) (map[string]any, error) {
 	projectRoot, err := getProjectRoot(args)
 	if err != nil {

@@ -2,10 +2,15 @@ package store
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/plan-ai/plan-ai/internal/change"
 	"github.com/plan-ai/plan-ai/internal/continuous"
+	"github.com/plan-ai/plan-ai/internal/domain"
 )
+
+// This repository mirrors data from change_requests (the canonical source).
+// All writes should go through change_repository.go first.
 
 type DeepImpactRepository struct{ db *sql.DB }
 type TargetedRegenerationRepository struct{ db *sql.DB }
@@ -24,6 +29,16 @@ func (r DeepImpactRepository) SaveDeepImpact(report change.DeepImpactReport) (ch
 	if err != nil {
 		return change.DeepImpactReport{}, err
 	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	ceID := domain.NewID("change_event")
+	r.db.Exec(`INSERT INTO change_events (id, project_id, change_type, summary, description, severity, status, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ceID, report.ProjectID, string(report.ChangeType), report.Summary, report.Summary, string(report.Severity), report.Status, "deep_impact", now, now)
+
+	crID := domain.NewID("change")
+	r.db.Exec(`INSERT INTO change_requests (id, project_id, reason, description, status, requester, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET reason=excluded.reason, description=excluded.description, status=excluded.status, updated_at=excluded.updated_at`,
+		crID, report.ProjectID, report.Summary, report.Summary, report.Status, "", now, now)
+
 	report.CreatedAt, report.UpdatedAt = parseRFC3339(c), parseRFC3339(u)
 	return report, nil
 }

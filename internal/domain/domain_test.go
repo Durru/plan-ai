@@ -158,7 +158,7 @@ func TestDomainEntitiesExposeIdentityAndTimestamps(t *testing.T) {
 		{name: "phase", id: Phase{ID: "phase_1", CreatedAt: now, UpdatedAt: now}.ID, crt: Phase{CreatedAt: now}.CreatedAt, upd: Phase{UpdatedAt: now}.UpdatedAt},
 		{name: "task", id: Task{ID: "task_1", CreatedAt: now, UpdatedAt: now}.ID, crt: Task{CreatedAt: now}.CreatedAt, upd: Task{UpdatedAt: now}.UpdatedAt},
 		{name: "decision", id: Decision{ID: "decision_1", CreatedAt: now, UpdatedAt: now}.ID, crt: Decision{CreatedAt: now}.CreatedAt, upd: Decision{UpdatedAt: now}.UpdatedAt},
-		{name: "research", id: Research{ID: "research_1", Category: KnowledgeCategoryGeneral, Status: ResearchStatusDraft, CreatedAt: now, UpdatedAt: now}.ID, crt: Research{CreatedAt: now}.CreatedAt, upd: Research{UpdatedAt: now}.UpdatedAt},
+		{name: "research", id: Research{ID: "research_1", Category: KnowledgeCategoryGeneral, Status: string(ResearchStatusDraft), CreatedAt: now, UpdatedAt: now}.ID, crt: Research{CreatedAt: now}.CreatedAt, upd: Research{UpdatedAt: now}.UpdatedAt},
 		{name: "knowledge object", id: KnowledgeObject{ID: "knowledge_1", CreatedAt: now, UpdatedAt: now}.ID, crt: KnowledgeObject{CreatedAt: now}.CreatedAt, upd: KnowledgeObject{UpdatedAt: now}.UpdatedAt},
 		{name: "validation", id: Validation{ID: "validation_1", CreatedAt: now, UpdatedAt: now}.ID, crt: Validation{CreatedAt: now}.CreatedAt, upd: Validation{UpdatedAt: now}.UpdatedAt},
 		{name: "snapshot", id: Snapshot{ID: "snapshot_1", CreatedAt: now, UpdatedAt: now}.ID, crt: Snapshot{CreatedAt: now}.CreatedAt, upd: Snapshot{UpdatedAt: now}.UpdatedAt},

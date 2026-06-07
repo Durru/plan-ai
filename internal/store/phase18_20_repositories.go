@@ -4,8 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"time"
+
+	"github.com/plan-ai/plan-ai/internal/domain"
 )
 
+// This repository mirrors data from change_requests (the canonical source).
+// All writes should go through change_repository.go first.
+//
 // ──────────────────────────────────────────────
 // Phase 18: Change Engine Repositories
 // ──────────────────────────────────────────────
@@ -74,6 +79,11 @@ func (r *ChangeEventRepository) Create(ev ChangeEventRecord) (ChangeEventRecord,
 	if err != nil {
 		return ev, err
 	}
+
+	crID := domain.NewID("change")
+	r.db.Exec(`INSERT INTO change_requests (id, project_id, reason, description, status, requester, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET reason=excluded.reason, description=excluded.description, status=excluded.status, updated_at=excluded.updated_at`,
+		crID, ev.ProjectID, ev.Summary, ev.Description, ev.Status, "", now, now)
+
 	return r.Get(ev.ID)
 }
 

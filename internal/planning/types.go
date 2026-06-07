@@ -23,6 +23,8 @@ type MasterPlan struct {
 	Assumptions              []string
 	Status                   Status
 	Version                  int
+	SupersedesID             string
+	SupersededByID           string
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 }
@@ -99,6 +101,16 @@ type ImplementationDocumentInput struct {
 	RollbackStrategy    string
 }
 
+// Repository is the canonical service-layer interface for planning
+// operations. It diverges from domain.PlanRepository:
+//   - Uses Create* prefix instead of Save* for write semantics.
+//   - Includes ImplementationDocument methods (domain.PlanRepository
+//     delegates those to a separate ImplDocRepository).
+//   - Lacks ListSpecificsByMaster and UpdatePlanStatus/Delete
+//     currently present only in domain.PlanRepository.
+// Use planning.MasterPlan / planning.SpecificPlan types with this
+// interface; domain.MasterPlan / domain.SpecificPlan remain for
+// store-direct compatibility.
 type Repository interface {
 	CreateMasterPlan(MasterPlan) (MasterPlan, error)
 	CreateSpecificPlan(SpecificPlan) (SpecificPlan, error)

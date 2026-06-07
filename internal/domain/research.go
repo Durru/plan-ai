@@ -14,7 +14,7 @@ type Research struct {
 	Confidence float64
 	Date       time.Time
 	Category   KnowledgeCategory // backward compat: maps to old ResearchEntry.Category
-	Status     ResearchStatus    // backward compat: maps to old ResearchEntry.Status
+	Status     string // backward compat: maps to old ResearchEntry.Status
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }

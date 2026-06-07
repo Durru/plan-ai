@@ -12,6 +12,10 @@ const (
 	PlanStatusCompleted Status = "completed"
 )
 
+// MasterPlan is the store-direct type. New code should prefer
+// planning.MasterPlan from internal/planning/ for service-level operations.
+// This type is kept for store/repositories compatibility.
+//
 // MasterPlan is the top-level strategic plan for a project. It defines
 // the overall objectives and high-level phases.
 type MasterPlan struct {
@@ -25,6 +29,9 @@ type MasterPlan struct {
 	UpdatedAt time.Time
 }
 
+// SpecificPlan is the store-direct type. New code should prefer
+// planning.SpecificPlan from internal/planning/ for service-level operations.
+//
 // SpecificPlan is a detailed implementation plan derived from a
 // MasterPlan. It contains concrete phases and tasks.
 type SpecificPlan struct {

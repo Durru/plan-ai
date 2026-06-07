@@ -5,6 +5,10 @@ import (
 	"github.com/plan-ai/plan-ai/internal/domain"
 )
 
+// This is the canonical source for all change-related writes.
+// phase18_20_repositories.go and v2_stage_d_repositories.go mirror data here
+// for backward compatibility with change_events and change_impact_reports_v2 tables.
+
 type ChangeRepository struct{ db *sql.DB }
 
 func NewChangeRepository(db *sql.DB) ChangeRepository { return ChangeRepository{db: db} }
