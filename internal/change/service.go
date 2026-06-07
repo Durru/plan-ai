@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 // Service implements ChangeEngine and orchestrates the full change lifecycle.

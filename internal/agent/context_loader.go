@@ -3,8 +3,8 @@ package agent
 import (
 	"database/sql"
 
-	approvedcontext "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/store"
+	approvedcontext "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // StoreContextLoader loads context from the store using repositories.

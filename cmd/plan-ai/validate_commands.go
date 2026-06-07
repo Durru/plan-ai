@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/plan-ai/plan-ai/internal/validation"
+	"github.com/Durru/plan-ai/internal/validation"
 	"github.com/spf13/cobra"
 )
 

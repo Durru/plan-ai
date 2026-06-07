@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/intentv3"
 )
 
 func openTestDB(t *testing.T) *ProjectStore {

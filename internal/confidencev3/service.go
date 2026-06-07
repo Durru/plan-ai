@@ -3,9 +3,9 @@ package confidencev3
 import (
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/ambiguityv3"
-	"github.com/plan-ai/plan-ai/internal/discoveryv3"
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/ambiguityv3"
+	"github.com/Durru/plan-ai/internal/discoveryv3"
+	"github.com/Durru/plan-ai/internal/intentv3"
 )
 
 type Service struct{}

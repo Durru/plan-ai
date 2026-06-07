@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/plan-ai/plan-ai/internal/intentv3"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // PlanningGuard checks whether planning can proceed for a project.

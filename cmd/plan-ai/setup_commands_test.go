@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/config"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // initSupportsExternalMode reports whether the init command has been updated

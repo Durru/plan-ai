@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 // AuthorityService makes approved context the authority for what Plan-AI

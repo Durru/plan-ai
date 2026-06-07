@@ -3,7 +3,7 @@ package store
 import (
 	"database/sql"
 
-	contextpkg "github.com/plan-ai/plan-ai/internal/context"
+	contextpkg "github.com/Durru/plan-ai/internal/context"
 )
 
 // DomainQuerier provides read access to domain entities for context building.

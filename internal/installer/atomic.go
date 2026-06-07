@@ -3,7 +3,7 @@ package installer
 import (
 	"os"
 
-	"github.com/plan-ai/plan-ai/internal/atomicfile"
+	"github.com/Durru/plan-ai/internal/atomicfile"
 )
 
 // writeFileAtomically is a thin wrapper around atomicfile.WriteFile,

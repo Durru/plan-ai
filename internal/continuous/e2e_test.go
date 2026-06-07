@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	. "github.com/plan-ai/plan-ai/internal/continuous"
-	"github.com/plan-ai/plan-ai/internal/store"
+	. "github.com/Durru/plan-ai/internal/continuous"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // ──────────────────────────────────────────────

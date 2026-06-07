@@ -3,10 +3,10 @@ package confidencev3_test
 import (
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/ambiguityv3"
-	"github.com/plan-ai/plan-ai/internal/confidencev3"
-	"github.com/plan-ai/plan-ai/internal/discoveryv3"
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/ambiguityv3"
+	"github.com/Durru/plan-ai/internal/confidencev3"
+	"github.com/Durru/plan-ai/internal/discoveryv3"
+	"github.com/Durru/plan-ai/internal/intentv3"
 )
 
 func TestEvaluateHighConfidenceIntent(t *testing.T) {

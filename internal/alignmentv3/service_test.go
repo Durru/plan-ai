@@ -3,8 +3,8 @@ package alignmentv3_test
 import (
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/alignmentv3"
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/alignmentv3"
+	"github.com/Durru/plan-ai/internal/intentv3"
 )
 
 func approvedIntent() intentv3.ProductIntent {

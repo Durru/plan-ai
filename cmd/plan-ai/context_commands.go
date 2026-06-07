@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/approval"
-	approvedcontext "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/requirements"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/approval"
+	approvedcontext "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/requirements"
+	"github.com/Durru/plan-ai/internal/store"
 	"github.com/spf13/cobra"
 )
 

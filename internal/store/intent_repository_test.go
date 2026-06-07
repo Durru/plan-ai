@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/intent"
+	"github.com/Durru/plan-ai/internal/intent"
 )
 
 func TestIntentProfileRepositoryPersistsAndApprovesProfile(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	approvedcontext "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/store"
+	approvedcontext "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 func TestRegistryStoresAndRetrievesApprovedItems(t *testing.T) {

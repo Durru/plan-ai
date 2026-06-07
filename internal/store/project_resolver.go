@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/config"
 )
 
 // ProjectLocation describes a resolved project: its identity, the on-disk

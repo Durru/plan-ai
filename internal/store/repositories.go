@@ -3,7 +3,7 @@ package store
 import (
 	"database/sql"
 
-	domainrepos "github.com/plan-ai/plan-ai/internal/store/repositories"
+	domainrepos "github.com/Durru/plan-ai/internal/store/repositories"
 )
 
 type Repositories struct {

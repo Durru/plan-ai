@@ -1,6 +1,6 @@
 package vision
 
-import "github.com/plan-ai/plan-ai/internal/ingestion"
+import "github.com/Durru/plan-ai/internal/ingestion"
 
 type Service struct{ repo Repository }
 

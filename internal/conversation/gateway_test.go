@@ -7,8 +7,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/plan-ai/plan-ai/internal/agent"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/agent"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 func openTestDB(t *testing.T) *sql.DB {

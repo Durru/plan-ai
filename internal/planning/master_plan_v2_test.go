@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 // mockMPV2Repo implements MasterPlanV2Repository for testing.

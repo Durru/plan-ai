@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/modelstrategy"
-	"github.com/plan-ai/plan-ai/internal/orchestrator"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/modelstrategy"
+	"github.com/Durru/plan-ai/internal/orchestrator"
 )
 
 // ──────────────────────────────────────────────

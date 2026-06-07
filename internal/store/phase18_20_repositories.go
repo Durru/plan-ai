@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 // This repository mirrors data from change_requests (the canonical source).

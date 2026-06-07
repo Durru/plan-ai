@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/research"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 func openResearchDB(t *testing.T) *sql.DB {

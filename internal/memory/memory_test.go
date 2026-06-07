@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/memory"
+	"github.com/Durru/plan-ai/internal/memory"
 )
 
 func TestNewEntry(t *testing.T) {

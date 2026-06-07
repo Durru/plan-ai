@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/config"
 	_ "modernc.org/sqlite"
 )
 

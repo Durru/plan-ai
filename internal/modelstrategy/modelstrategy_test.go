@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/modelstrategy"
+	"github.com/Durru/plan-ai/internal/modelstrategy"
 )
 
 func TestClassificationTier(t *testing.T) {

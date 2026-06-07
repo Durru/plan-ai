@@ -3,7 +3,7 @@ package change
 import (
 	"database/sql"
 
-	"github.com/plan-ai/plan-ai/internal/impact"
+	"github.com/Durru/plan-ai/internal/impact"
 )
 
 // EntityAnalyzer provides context-aware impact analysis by examining

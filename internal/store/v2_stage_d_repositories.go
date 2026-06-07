@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/change"
-	"github.com/plan-ai/plan-ai/internal/continuous"
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/change"
+	"github.com/Durru/plan-ai/internal/continuous"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 // This repository mirrors data from change_requests (the canonical source).

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	mcpserver "github.com/plan-ai/plan-ai/internal/mcp"
-	"github.com/plan-ai/plan-ai/internal/store"
+	mcpserver "github.com/Durru/plan-ai/internal/mcp"
+	"github.com/Durru/plan-ai/internal/store"
 	"github.com/spf13/cobra"
 )
 

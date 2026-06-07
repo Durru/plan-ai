@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/discoveryv3"
+	"github.com/Durru/plan-ai/internal/discoveryv3"
 )
 
 func TestDiscoveryV3QuestionRepository(t *testing.T) {

@@ -3,7 +3,7 @@ package continuous_test
 import (
 	"testing"
 
-	. "github.com/plan-ai/plan-ai/internal/continuous"
+	. "github.com/Durru/plan-ai/internal/continuous"
 )
 
 func TestBuildTargetedRegenerationNarrowsDatabaseChange(t *testing.T) {

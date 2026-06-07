@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	domainrepos "github.com/plan-ai/plan-ai/internal/store/repositories"
+	"github.com/Durru/plan-ai/internal/domain"
+	domainrepos "github.com/Durru/plan-ai/internal/store/repositories"
 )
 
 func TestStoreLayerV2CreatesSandboxStores(t *testing.T) {

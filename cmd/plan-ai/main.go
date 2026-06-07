@@ -11,25 +11,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/agent"
-	"github.com/plan-ai/plan-ai/internal/conversation"
-	"github.com/plan-ai/plan-ai/internal/alignmentv3"
-	"github.com/plan-ai/plan-ai/internal/ambiguityv3"
-	"github.com/plan-ai/plan-ai/internal/confidencev3"
-	"github.com/plan-ai/plan-ai/internal/config"
-	"github.com/plan-ai/plan-ai/internal/continuous"
-	"github.com/plan-ai/plan-ai/internal/core"
-	"github.com/plan-ai/plan-ai/internal/discoveryv3"
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/intentv3"
-	"github.com/plan-ai/plan-ai/internal/knowledge"
-	"github.com/plan-ai/plan-ai/internal/research"
-	"github.com/plan-ai/plan-ai/internal/store"
-	"github.com/plan-ai/plan-ai/internal/vision"
+	"github.com/Durru/plan-ai/internal/agent"
+	"github.com/Durru/plan-ai/internal/conversation"
+	"github.com/Durru/plan-ai/internal/alignmentv3"
+	"github.com/Durru/plan-ai/internal/ambiguityv3"
+	"github.com/Durru/plan-ai/internal/confidencev3"
+	"github.com/Durru/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/continuous"
+	"github.com/Durru/plan-ai/internal/core"
+	"github.com/Durru/plan-ai/internal/version"
+	"github.com/Durru/plan-ai/internal/discoveryv3"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/knowledge"
+	"github.com/Durru/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/vision"
 	"github.com/spf13/cobra"
 )
 
-const version = "v2.0.0"
+var ver = version.Version
 
 const configVersion = "2.0.0"
 
@@ -42,7 +43,7 @@ func main() {
 }
 
 func newRootCommand() *cobra.Command {
-	app := core.NewApp(version, ".")
+	app := core.NewApp(ver, ".")
 
 	cmd := &cobra.Command{
 		Use:   "plan-ai",

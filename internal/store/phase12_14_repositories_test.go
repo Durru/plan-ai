@@ -3,10 +3,10 @@ package store
 import (
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/knowledge"
-	"github.com/plan-ai/plan-ai/internal/planning"
-	"github.com/plan-ai/plan-ai/internal/research"
-	"github.com/plan-ai/plan-ai/internal/workflows"
+	"github.com/Durru/plan-ai/internal/knowledge"
+	"github.com/Durru/plan-ai/internal/planning"
+	"github.com/Durru/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/workflows"
 )
 
 func TestPhase12ResearchKnowledgePersistence(t *testing.T) {

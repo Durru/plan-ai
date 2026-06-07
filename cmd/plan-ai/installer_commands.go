@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/installer"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/installer"
+	"github.com/Durru/plan-ai/internal/store"
 	"github.com/spf13/cobra"
 )
 

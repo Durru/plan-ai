@@ -1,6 +1,6 @@
 package ambiguityv3
 
-import "github.com/plan-ai/plan-ai/internal/discoveryv3"
+import "github.com/Durru/plan-ai/internal/discoveryv3"
 
 // AmbiguityScore is a 0-100 score where higher means more ambiguous.
 type AmbiguityScore int

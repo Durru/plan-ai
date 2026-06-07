@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/knowledge"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/knowledge"
 )
 
 func openKnowledgeTestDB(t *testing.T) *sql.DB {

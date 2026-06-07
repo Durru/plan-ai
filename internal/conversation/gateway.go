@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/agent"
-	"github.com/plan-ai/plan-ai/internal/guard"
+	"github.com/Durru/plan-ai/internal/agent"
+	"github.com/Durru/plan-ai/internal/guard"
 )
 
 // Gateway routes natural-language messages through the agent system

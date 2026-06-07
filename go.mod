@@ -1,4 +1,4 @@
-module github.com/plan-ai/plan-ai
+module github.com/Durru/plan-ai
 
 go 1.25.0
 

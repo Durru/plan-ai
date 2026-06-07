@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"testing"
 
-	approvedcontext "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/store"
+	approvedcontext "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 func TestBuilderBuildExecutiveContext(t *testing.T) {

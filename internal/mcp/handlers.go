@@ -28,16 +28,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/capabilities"
-	"github.com/plan-ai/plan-ai/internal/config"
-	"github.com/plan-ai/plan-ai/internal/conversation"
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/guard"
-	"github.com/plan-ai/plan-ai/internal/modelstrategy"
-	"github.com/plan-ai/plan-ai/internal/orchestrator"
-	"github.com/plan-ai/plan-ai/internal/planning"
-	"github.com/plan-ai/plan-ai/internal/research"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/capabilities"
+	"github.com/Durru/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/conversation"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/guard"
+	"github.com/Durru/plan-ai/internal/modelstrategy"
+	"github.com/Durru/plan-ai/internal/orchestrator"
+	"github.com/Durru/plan-ai/internal/planning"
+	"github.com/Durru/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // ── Helpers ──

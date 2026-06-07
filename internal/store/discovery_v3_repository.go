@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/discoveryv3"
+	"github.com/Durru/plan-ai/internal/discoveryv3"
 )
 
 // ──────────────────────────────────────────────

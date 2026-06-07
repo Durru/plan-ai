@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/config"
 )
 
 func newTestRegistry(t *testing.T) (*sql.DB, *ProjectRegistryRepository) {

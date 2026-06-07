@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 func TestClassifyAssignsOfficialCategories(t *testing.T) {

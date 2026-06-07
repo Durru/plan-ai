@@ -143,7 +143,7 @@ func TestIntentV3_NoLongerUsedInHandlers(t *testing.T) {
 		t.Skipf("cannot read handlers.go for import check: %v", err)
 	}
 	content := string(data)
-	if strings.Contains(content, `"github.com/plan-ai/plan-ai/internal/intentv3"`) {
+	if strings.Contains(content, `"github.com/Durru/plan-ai/internal/intentv3"`) {
 		t.Errorf("handlers.go still imports intentv3 — remove the import")
 	}
 	if strings.Contains(content, "intentv3.") && !strings.Contains(content, "intentv3.Service") {

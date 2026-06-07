@@ -3,8 +3,8 @@ package store
 import (
 	"database/sql"
 
-	ctx "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/planning"
+	ctx "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/planning"
 )
 
 type PlanEvolutionRepository struct{ db *sql.DB }

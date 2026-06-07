@@ -53,19 +53,29 @@ OpenCode → plan_ai.agent_message ─┘        │
 ## Install
 
 ```bash
-# Clone and build
-git clone https://github.com/Durru/plan-ai.git
-cd plan-ai
-bash scripts/install.sh
+# Quick install (recommended)
+curl -fsSL https://raw.githubusercontent.com/Durru/plan-ai/main/scripts/install.sh | bash
 
 # Or via go install
 go install github.com/Durru/plan-ai/cmd/plan-ai@latest
+
+# Or build from source
+git clone https://github.com/Durru/plan-ai.git
+cd plan-ai && go build -o plan-ai ./cmd/plan-ai/
+sudo mv plan-ai /usr/local/bin/
 ```
 
 **Safe by default.** `plan-ai install` never touches your real OpenCode config unless you pass `--allow-real-opencode`. Use sandbox mode:
 
 ```bash
 OPENCODE_CONFIG_DIR=/tmp/sandbox-oc plan-ai install
+```
+
+After install, set up globally and verify:
+
+```bash
+plan-ai install --allow-real-opencode
+plan-ai doctor
 ```
 
 ## Quickstart

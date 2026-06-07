@@ -3,8 +3,8 @@ package conversation
 import (
 	"database/sql"
 
-	"github.com/plan-ai/plan-ai/internal/agent"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/agent"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // runRepoAdapter adapts store.AgentRunV2Repository to the agent.AgentRunRepository

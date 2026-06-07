@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/atomicfile"
-	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/atomicfile"
+	"github.com/Durru/plan-ai/internal/config"
 )
 
 // SetupResult holds paths to all generated OpenCode integration artifacts.
@@ -541,7 +541,7 @@ func SetupMCPConfig(homeRoot string, binDir string, allowReal bool) (backupPath 
 			realOCDir := filepath.Join(u.HomeDir, ".config", "opencode")
 			ocDir := opencodeConfigDir(homeRoot)
 			if ocDir == realOCDir || strings.HasPrefix(ocDir, realOCDir) {
-				return "", fmt.Errorf("refusing to write to real OpenCode config at %s without OPENCODE_CONFIG_DIR; set OPENCODE_CONFIG_DIR for sandbox use or pass allowReal=true", ocDir)
+				return "", fmt.Errorf("refusing to write to real OpenCode config at %s without OPENCODE_CONFIG_DIR; set OPENCODE_CONFIG_DIR for sandbox use or pass --allow-real-opencode", ocDir)
 			}
 		}
 	}

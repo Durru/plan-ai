@@ -1,0 +1,42 @@
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: plan-ai
+    binary: plan-ai
+    main: ./cmd/plan-ai
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/Durru/plan-ai/internal/version.Version={{.Version}}
+    env:
+      - CGO_ENABLED=1
+
+archives:
+  - format: tar.gz
+    name_template: "plan-ai_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: Durru
+    name: plan-ai
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

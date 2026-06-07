@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/knowledge"
-	"github.com/plan-ai/plan-ai/internal/planning"
-	"github.com/plan-ai/plan-ai/internal/research"
-	"github.com/plan-ai/plan-ai/internal/workflows"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/knowledge"
+	"github.com/Durru/plan-ai/internal/planning"
+	"github.com/Durru/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/workflows"
 )
 
 var _ research.RegistryRepository = (*ResearchRepository)(nil)

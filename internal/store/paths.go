@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/plan-ai/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/config"
 )
 
 // ResolveHomeRoot preserves the current PLAN_AI_HOME contract: the value is

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/config"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // stateVersion is the current schema version for state.json.

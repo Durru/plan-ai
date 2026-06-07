@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/capabilities"
+	"github.com/Durru/plan-ai/internal/capabilities"
 	_ "modernc.org/sqlite"
 )
 

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/knowledge"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/knowledge"
 )
 
 // KnowledgeRepository persists KnowledgeObjects, tags, relations, and

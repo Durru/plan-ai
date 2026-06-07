@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	approvedcontext "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/ingestion"
-	"github.com/plan-ai/plan-ai/internal/vision"
+	approvedcontext "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/ingestion"
+	"github.com/Durru/plan-ai/internal/vision"
 )
 
 type IngestionRepository struct{ db *sql.DB }

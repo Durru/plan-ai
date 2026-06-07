@@ -1,6 +1,6 @@
 package alignmentv3
 
-import "github.com/plan-ai/plan-ai/internal/intentv3"
+import "github.com/Durru/plan-ai/internal/intentv3"
 
 type Score int
 

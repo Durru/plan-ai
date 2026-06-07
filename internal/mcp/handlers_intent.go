@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/intentv3"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 // ── Phase 51: Product Intent Handlers (store repos directly, no intentv3.Service) ──

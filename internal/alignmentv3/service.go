@@ -5,7 +5,7 @@ import (
 	"hash/fnv"
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/intentv3"
 )
 
 type Service struct{}

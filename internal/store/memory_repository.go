@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/memory"
+	"github.com/Durru/plan-ai/internal/memory"
 )
 
 // MemoryRepository implements memory.Store backed by SQLite.

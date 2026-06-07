@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/domain"
 )
 
 type rowScanner interface{ Scan(dest ...any) error }

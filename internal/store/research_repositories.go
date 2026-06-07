@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/research"
 )
 
 // ResearchRepository persists ResearchEntries, findings, sources,

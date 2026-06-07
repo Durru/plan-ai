@@ -3,10 +3,10 @@ package store
 import (
 	"database/sql"
 
-	ctx "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/reference"
-	"github.com/plan-ai/plan-ai/internal/research"
+	ctx "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/reference"
+	"github.com/Durru/plan-ai/internal/research"
 )
 
 type SmartContextPackageRepository struct{ db *sql.DB }

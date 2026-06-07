@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	mcpserver "github.com/plan-ai/plan-ai/internal/mcp"
+	mcpserver "github.com/Durru/plan-ai/internal/mcp"
 
 	_ "modernc.org/sqlite"
 )
@@ -99,7 +99,7 @@ func TestStatusCommandReportsGlobalAndProjectRoutes(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"Plan-AI v2.0.0",
+		"Plan-AI dev",
 		"Global installation: installed",
 		"Project initialization: initialized",
 		filepath.Join(home, ".plan-ai"),
@@ -431,7 +431,7 @@ func TestVersionCommandOutputStaysExact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("version: %v", err)
 	}
-	if output != "Plan-AI v2.0.0\n" {
+	if output != "Plan-AI dev\n" {
 		t.Fatalf("version output = %q", output)
 	}
 }

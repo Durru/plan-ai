@@ -3,7 +3,7 @@ package store
 import (
 	"database/sql"
 
-	"github.com/plan-ai/plan-ai/internal/intentv3"
+	"github.com/Durru/plan-ai/internal/intentv3"
 )
 
 type IntentV3ProductIntentRepository struct{ db *sql.DB }

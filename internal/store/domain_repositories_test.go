@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/domain"
-	researchpkg "github.com/plan-ai/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/domain"
+	researchpkg "github.com/Durru/plan-ai/internal/research"
 )
 
 func TestDomainRepositoriesCreateGetListAndUpdateStatus(t *testing.T) {

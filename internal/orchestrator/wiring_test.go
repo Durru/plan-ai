@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/capabilities"
-	"github.com/plan-ai/plan-ai/internal/modelstrategy"
-	"github.com/plan-ai/plan-ai/internal/orchestrator"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/capabilities"
+	"github.com/Durru/plan-ai/internal/modelstrategy"
+	"github.com/Durru/plan-ai/internal/orchestrator"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 func TestOrchestratorCreateJob_ValidatesInput(t *testing.T) {

@@ -3,10 +3,10 @@ package store
 import (
 	"database/sql"
 
-	"github.com/plan-ai/plan-ai/internal/approval"
-	"github.com/plan-ai/plan-ai/internal/domain"
-	"github.com/plan-ai/plan-ai/internal/requirements"
-	"github.com/plan-ai/plan-ai/internal/vision"
+	"github.com/Durru/plan-ai/internal/approval"
+	"github.com/Durru/plan-ai/internal/domain"
+	"github.com/Durru/plan-ai/internal/requirements"
+	"github.com/Durru/plan-ai/internal/vision"
 )
 
 type VisionDocumentRepository struct{ db *sql.DB }

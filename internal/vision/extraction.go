@@ -3,7 +3,7 @@ package vision
 import (
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/ingestion"
+	"github.com/Durru/plan-ai/internal/ingestion"
 )
 
 func Extract(projectID string, sources []ingestion.IngestedSource) Draft {

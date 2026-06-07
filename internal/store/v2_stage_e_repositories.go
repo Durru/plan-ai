@@ -3,7 +3,7 @@ package store
 import (
 	"database/sql"
 
-	"github.com/plan-ai/plan-ai/internal/opencode"
+	"github.com/Durru/plan-ai/internal/opencode"
 )
 
 type SubagentTaskRepository struct{ db *sql.DB }

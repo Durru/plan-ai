@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plan-ai/plan-ai/internal/ingestion"
-	"github.com/plan-ai/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/ingestion"
+	"github.com/Durru/plan-ai/internal/store"
 )
 
 func TestServiceCreatesRawInputAndIngestedSource(t *testing.T) {

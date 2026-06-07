@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/plan-ai/plan-ai/internal/config"
-	"github.com/plan-ai/plan-ai/internal/opencode"
+	"github.com/Durru/plan-ai/internal/config"
+	"github.com/Durru/plan-ai/internal/opencode"
 )
 
 // opencodeSchemaURL is the schema URL for OpenCode config files.

@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	approvedcontext "github.com/plan-ai/plan-ai/internal/context"
-	"github.com/plan-ai/plan-ai/internal/guard"
-	"github.com/plan-ai/plan-ai/internal/knowledge"
-	"github.com/plan-ai/plan-ai/internal/planning"
-	"github.com/plan-ai/plan-ai/internal/research"
-	"github.com/plan-ai/plan-ai/internal/store"
-	"github.com/plan-ai/plan-ai/internal/workflows"
+	approvedcontext "github.com/Durru/plan-ai/internal/context"
+	"github.com/Durru/plan-ai/internal/guard"
+	"github.com/Durru/plan-ai/internal/knowledge"
+	"github.com/Durru/plan-ai/internal/planning"
+	"github.com/Durru/plan-ai/internal/research"
+	"github.com/Durru/plan-ai/internal/store"
+	"github.com/Durru/plan-ai/internal/workflows"
 	"github.com/spf13/cobra"
 )
 

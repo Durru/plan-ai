@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plan-ai/plan-ai/internal/modelstrategy"
-	"github.com/plan-ai/plan-ai/internal/orchestrator"
+	"github.com/Durru/plan-ai/internal/modelstrategy"
+	"github.com/Durru/plan-ai/internal/orchestrator"
 )
 
 func TestModelProfileRepositoryCreateAndGet(t *testing.T) {
