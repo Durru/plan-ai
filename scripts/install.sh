@@ -152,6 +152,22 @@ install_git() {
     success "Built and installed to ${install_dir}/${BINARY_NAME}"
 }
 
+integrate_opencode() {
+    step "Configuring OpenCode integration"
+
+    if ! command -v "$BINARY_NAME" &>/dev/null; then
+        warn "Cannot find $BINARY_NAME in PATH — skipping OpenCode integration"
+        return
+    fi
+
+    if "$BINARY_NAME" install --allow-real-opencode 2>&1; then
+        success "Plan-AI registered in OpenCode (mcp.plan-ai)"
+    else
+        warn "OpenCode integration skipped (OpenCode not detected — standalone mode)"
+        info  "Run 'plan-ai install --allow-real-opencode' later when OpenCode is available"
+    fi
+}
+
 print_banner() {
     echo ""
     echo -e "${CYAN}${BOLD}"
@@ -191,13 +207,15 @@ main() {
         git)    install_git ;;
     esac
 
+    integrate_opencode
+
     echo ""
-    echo -e "${GREEN}${BOLD}Installation complete!${NC}"
+    echo -e "${GREEN}${BOLD}Plan-AI is ready!${NC}"
     echo ""
     echo -e "${BOLD}Next steps:${NC}"
-    echo -e "  ${CYAN}1.${NC} Run ${BOLD}plan-ai install --allow-real-opencode${NC} to set up globally"
-    echo -e "  ${CYAN}2.${NC} cd your-project && ${BOLD}plan-ai init${NC}"
-    echo -e "  ${CYAN}3.${NC} ${BOLD}plan-ai doctor${NC} to verify health"
+    echo -e "  ${CYAN}1.${NC} cd your-project && ${BOLD}plan-ai init${NC}"
+    echo -e "  ${CYAN}2.${NC} ${BOLD}plan-ai doctor${NC} to verify health"
+    echo -e "  ${CYAN}3.${NC} ${BOLD}plan-ai intent create --description \"your idea\"${NC}"
     echo ""
     echo -e "${DIM}Docs: https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}${NC}"
     echo ""

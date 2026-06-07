@@ -53,22 +53,25 @@ OpenCode → plan_ai.agent_message ─┘        │
 ## Install
 
 ```bash
-# Quick install (recommended)
+# One command — binary + OpenCode integration
 curl -fsSL https://raw.githubusercontent.com/Durru/plan-ai/main/scripts/install.sh | bash
+```
 
-# Or via go install
+That's it. The script:
+1. Detects your OS and architecture
+2. Downloads the latest binary from GitHub Releases
+3. Verifies the checksum
+4. Installs to `/usr/local/bin/plan-ai` (or `~/.local/bin`)
+5. **Auto-configures OpenCode** — registers `plan-ai` as an MCP server
+
+```bash
+# Alternative methods
 go install github.com/Durru/plan-ai/cmd/plan-ai@latest
 
-# Or build from source
+# Build from source
 git clone https://github.com/Durru/plan-ai.git
 cd plan-ai && go build -o plan-ai ./cmd/plan-ai/
 sudo mv plan-ai /usr/local/bin/
-```
-
-**Safe by default.** `plan-ai install` never touches your real OpenCode config unless you pass `--allow-real-opencode`. Use sandbox mode:
-
-```bash
-OPENCODE_CONFIG_DIR=/tmp/sandbox-oc plan-ai install
 ```
 
 After install, set up globally and verify:
