@@ -2,177 +2,258 @@
 
 **Local-first continuous implementation planning for AI-assisted projects.**
 
-Plan-AI prepares implementation plans. It does not implement code. It stores approved context, decisions, research, knowledge, plans, tasks, snapshots, and exported documents in local SQLite stores so the project has a durable source of truth before AI agents start coding.
+[![Go Build](https://github.com/Durru/plan-ai/actions/workflows/go.yml/badge.svg)](https://github.com/Durru/plan-ai/actions)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![OpenCode](https://img.shields.io/badge/OpenCode-1.16+-6C47FF)](https://opencode.ai)
 
-## Why Plan-AI exists
+---
 
-AI coding fails when the plan lives only in chat. Plan-AI gives the project its own planning memory:
+## What Plan-AI Does
 
-- Product intent before implementation.
-- Progressive discovery before task generation.
-- Ambiguity and confidence checks before coding.
-- Alignment reports that connect tasks back to the approved intent.
-- Local-first persistence, no required hosted service.
+AI coding fails when the plan lives only in chat. Plan-AI gives the project its own **planning memory** — durable, searchable, local SQLite. Before any agent writes code, Plan-AI ensures:
+
+1. **Intent is understood** — Discovery questions, ambiguity analysis, confidence scoring
+2. **Research is done once** — Reuse approved research, track freshness, promote to knowledge
+3. **Decisions are recorded** — Supersedable, searchable, linked to evidence
+4. **Plans are structured** — Master plans → specific plans → phases → tasks
+5. **Changes are tracked** — 10-state lifecycle, impact analysis, continuous proposals
+6. **Context is derived** — L0-L4 delivery from approved entities only
+
+## The Six Principles (v4)
+
+Every feature enforces these invariants:
+
+| # | Principle | Enforcement |
+|---|-----------|-------------|
+| 1 | Nada aprobado se vuelve a preguntar | `context.AuthorityService.IsKnown()` dedup |
+| 2 | Nada investigado se vuelve a investigar | `research.ReuseService.FindReusable()` |
+| 3 | Nada decidido se vuelve a decidir | Decision supersession + `supersedes_id` |
+| 4 | Nada planificado se vuelve a planificar | `PlanningGuard` requires approved intent |
+| 5 | Solo se actualiza lo afectado | Impact Graph BFS traversal from entity_links |
+| 6 | El contexto se deriva de entidades aprobadas | `context.DeliveryEngine` L0-L4 |
+
+## Architecture
+
+```
+User → plan-ai CLI ───────────────┐
+                                  ├── conversation.Gateway ── agent.Service
+OpenCode → plan_ai.agent_message ─┘        │
+                                            │
+        ┌──── Intent Detection ──── Router ──── Context Loading ────┤
+        │                                                           │
+        ▼                                                           ▼
+  PlanningGuard ──►   planning.Service  ──►  store.Repositories
+  (approved intent)   research.Service      (SQLite persistence)
+                      context.Authority
+                      continuous.Loop
+                      memory.Recorder
+```
 
 ## Install
 
 ```bash
+# Clone and build
 git clone https://github.com/Durru/plan-ai.git
 cd plan-ai
 bash scripts/install.sh
+
+# Or via go install
+go install github.com/Durru/plan-ai/cmd/plan-ai@latest
 ```
 
-Then make sure the install prefix is on PATH if needed:
+**Safe by default.** `plan-ai install` never touches your real OpenCode config unless you pass `--allow-real-opencode`. Use sandbox mode:
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+OPENCODE_CONFIG_DIR=/tmp/sandbox-oc plan-ai install
 ```
-
-Verify:
-
-```bash
-plan-ai doctor
-plan-ai bootstrap
-plan-ai status
-```
-
-More details: [docs/install.md](docs/install.md).
 
 ## Quickstart
 
 ```bash
-plan-ai ingest --type prompt --content "Build a planning assistant for product teams. It must use SQLite."
-plan-ai vision draft
-plan-ai approved add --type requirement "Plans must be stored locally."
-plan-ai approved add --type decision "Use SQLite as the source of truth."
-plan-ai plan master
-plan-ai context
+# 1. Install globally
+plan-ai install
+
+# 2. Init a project (external storage by default)
+cd my-project
+plan-ai init
+
+# 3. Discover intent
+plan-ai intent create --description "SaaS for task management"
+
+# 4. Approve context
+plan-ai approved add --type requirement "Multi-tenant isolation via separate DBs"
+plan-ai approved add --type decision "Use schema-per-tenant"
+
+# 5. Plan with guardrails (blocked until intent approved)
+plan-ai intent approve <id>
+plan-ai plan
+
+# 6. Continuous planning
+plan-ai continuous events
+plan-ai continuous proposals
 ```
 
-V3 Product Intent flow:
+## Core Commands
+
+```
+# Setup & Health
+plan-ai install        Install globally with tool detection
+plan-ai init           Initialize project (--local for legacy)
+plan-ai update         Refresh state and integrations
+plan-ai uninstall      Remove components (--allow-real-opencode for OC cleanup)
+plan-ai doctor         Check stores, migrations, OpenCode health
+plan-ai doctor --fix   Repair stale state (local install only)
+plan-ai status         Project status overview
+
+# Discovery & Intent
+plan-ai intent create  Create Product Intent (Phase 51)
+plan-ai intent approve Approve intent (unblocks planning)
+plan-ai discovery start Start progressive discovery (Phase 53)
+plan-ai ambiguity analyze  Analyze missing info (Phase 54)
+plan-ai confidence evaluate Score understanding (Phase 55)
+plan-ai alignment review    Align intent to implementation (Phase 56)
+
+# Context & Research
+plan-ai approved add   Store approved context (deduplicated, FTS-backed)
+plan-ai approved find  Search approved context
+plan-ai research add   Create research entry
+plan-ai research reuse Check for reusable approved research
+plan-ai knowledge add  Store knowledge from research
+plan-ai memory add     Record durable memory (FTS-backed)
+
+# Planning
+plan-ai plan           Create master plan, specific plan, implementation doc
+plan-ai agent process  Natural-language planning via conversation gateway
+
+# Continuous
+plan-ai continuous events      List detected events
+plan-ai continuous proposals   List plan update proposals
+plan-ai continuous status      Show continuous planning health
+plan-ai continuous context L1  Generate planning context
+
+# Validation
+plan-ai validate v2    Run 63+ deterministic validation cases
+
+# MCP Tools (38 available via OpenCode)
+plan_ai.init_project    plan_ai.create_master_plan    plan_ai.agent_message
+plan_ai.approve_plan    plan_ai.continuous_status     plan_ai.run_workflow
+plan_ai.detect_changes  plan_ai.rollback_snapshot     plan_ai.create_product_intent
+```
+
+## Storage Model
+
+| Store | Path | Purpose |
+|-------|------|---------|
+| Global | `~/.plan-ai/global.db` | Install state, known projects, global config |
+| Project (external) | `~/.plan-ai/projects/<slug>/project.db` | Project data (default) |
+| Project (local) | `<project>/.plan-ai/project.db` | Legacy mode (`--local`) |
+
+All persistent — SQLite WAL mode, FTS5 search, idempotent migrations. Runtime data is gitignored.
+
+## OpenCode Integration
+
+**Never corrupted — safety by design:**
+
+| Guard | Where | Mechanism |
+|-------|-------|-----------|
+| AllowReal flag | CLI (install/init/uninstall) | `--allow-real-opencode` required |
+| Built-in guard | `opencode.SetupMCPConfig` | `getpwuid_r` real-home check |
+| Sandbox | `$OPENCODE_CONFIG_DIR` | Redirects all writes |
+| Merge | Not overwrite | Preserves existing `mcp` entries |
+| Backup | Before every write | `.pre-mcp-write.<timestamp>.bak` |
+| Atomic | temp+rename | Crash-safe `atomicfile.WriteFile` |
+
+Zero tests touch real OpenCode config. All sandboxed via `t.TempDir()`.
+
+## Package Map (31 packages)
+
+```
+internal/
+├── agent/         Intent detection, routing, delegation, response building
+├── guard/         Planning guardrail — blocks planning without approved intent
+├── conversation/  CLI+MCP gateway — single entry point for natural language
+├── planning/      Master plans v2, specific plans, implementation documents
+├── research/      Research engine — classification, CRUD, reuse, promotion
+├── knowledge/     Knowledge base — relations, references, tags
+├── vision/        Vision drafts, discovery, documents
+├── context/       Approved context authority, FTS search, delivery engine L0-L4
+├── change/        Change engine — events, impact analysis, snapshots, versioning
+├── continuous/    Continuous planning — detector, loop, proposals, context gen
+├── memory/        Durable memory — FTS-backed recorder, Q&A reuse
+├── intentv3/      Product Intent engine (V3 lifecycle — draft→approved)
+├── discoveryv3/   Progressive discovery — 5-level question engine
+├── alertv3/       Product alignment review (Phase 56-70)
+├── ambiguityv3/   Missing info, assumptions, conflicts analysis
+├── confidencev3/  Intent confidence scoring
+├── domain/        Canonical domain types (deprecated for planning.*, research.*)
+├── store/         SQLite schema, 85+ tables, migrations, 14 typed repos
+├── config/        Paths, layout, config I/O
+├── installer/     Component-based install/sync/uninstall, tool detection
+├── opencode/      OpenCode integration, setup, doctor, detection, workflows
+├── mcp/           MCP server — 39 tools, handlers, SDK integration
+├── atomicfile/    Crash-safe file writes (WriteFile + WriteFileWithBackup)
+├── impact/        Impact Graph — nodes, edges, BFS traversal, builder
+├── capabilities/  Skill registry — SQL-backed, auto-seeded
+├── workflows/     Workflow engine — realDispatchStep with 15 step types
+├── orchestrator/  Job orchestrator — CreateJob, Execute, capability selection
+├── scanner/       Deterministic project scanner (git, languages, deps, files)
+├── ingestion/     Input ingestion — classify, extract, normalize
+├── modelstrategy/ Model selection, provider classification, retry engine
+├── validation/    V2 validation — 63+ test cases
+```
+
+## Development
 
 ```bash
-plan-ai intent discover "Quiero crear un CRM para talleres mecánicos"
-
-plan-ai intent create \
-  --description "CRM for mechanic workshops" \
-  --expected-outcome "Workshops can track customers, vehicles, jobs, and follow-ups" \
-  --desired-experience "Simple, fast, Spanish-first workflow" \
-  --desired-result "A clear implementation plan before coding" \
-  --success-definition "A workshop owner can manage jobs without spreadsheets" \
-  --failure-definition "The tool becomes a generic CRM with no workshop-specific workflow"
-
-plan-ai intent list
-plan-ai discovery init --intent <pintent_id>
-plan-ai ambiguity analyze --intent <pintent_id>
-plan-ai confidence evaluate --intent <pintent_id>
-plan-ai alignment framework --intent <pintent_id>
-```
-
-Full guide: [docs/quickstart.md](docs/quickstart.md).
-
-## Core commands
-
-```text
-plan-ai install        Install or migrate global persistence
-plan-ai init           Initialize project persistence
-plan-ai bootstrap      Install stores, initialize project, and wire OpenCode/MCP
-plan-ai status         Show store and project status
-plan-ai doctor         Check stores, migrations, and integrations
-plan-ai scan           Deterministic project scan
-plan-ai ingest         Store user input for planning
-plan-ai vision         Create and approve vision artifacts
-plan-ai approved       Manage approved project context
-plan-ai research       Store research and findings
-plan-ai knowledge      Store reusable project knowledge
-plan-ai plan           Generate planning artifacts
-plan-ai intent         Detect V2 intent and manage V3 Product Intent
-plan-ai discovery      Run progressive discovery for a Product Intent
-plan-ai ambiguity      Analyze missing information and assumptions
-plan-ai confidence     Score how well Plan-AI understands intent
-plan-ai alignment      Review implementation alignment to intent
-plan-ai setup opencode Generate safe OpenCode integration artifacts
-plan-ai validate       Run deterministic validation suites
-```
-
-Full reference: [docs/cli-reference.md](docs/cli-reference.md).
-
-## Storage model
-
-Plan-AI uses SQLite:
-
-- Global store: `~/.plan-ai/global.db`
-- Project store: `<project>/.plan-ai/project.db`
-
-Runtime data is intentionally ignored by git. Do not commit `.plan-ai/`, SQLite databases, logs, `.env` files, tokens, or generated binaries.
-
-## OpenCode integration
-
-Safe sandbox mode:
-
-```bash
-OPENCODE_CONFIG_DIR="$PWD/.tmp/opencode-config" plan-ai bootstrap
-```
-
-Real OpenCode config writes require explicit opt-in:
-
-```bash
-plan-ai bootstrap --allow-real-opencode
-```
-
-Guide: [docs/opencode-integration.md](docs/opencode-integration.md).
-
-## Validation
-
-Development gate:
-
-```bash
-gofmt -w cmd internal
-go test ./...
-go vet ./...
+# Build
 go build ./...
-bash scripts/test-sandbox.sh
-bash scripts/test-vps-clean.sh
-bash scripts/release-check.sh
+
+# Test (all sandboxed via t.TempDir, never touches real ~/.config/opencode)
+go test ./...
+
+# Lint
+go vet ./...
+
+# Full check
+go test -count=1 ./... && go vet ./...
 ```
 
-Manual scenario: [docs/manual-validation.md](docs/manual-validation.md).  
-Clean VPS guide: [docs/vps-validation.md](docs/vps-validation.md).
+**Codebase metrics:** 31 packages, 85+ DB tables, 39 MCP tools, 120+ CLI commands, 0 raw SQL in service layer, 0 import cycles.
 
-## Architecture
+## Audit Status (2026-06-06)
 
-| Layer | Package | Purpose |
-|-------|---------|---------|
-| CLI | `cmd/plan-ai/` | Cobra command tree |
-| MCP Server | `cmd/mcp-server/` | stdio MCP interface |
-| Core | `internal/core/` | App metadata |
-| Config | `internal/config/` | Global/project config paths |
-| Store | `internal/store/` | SQLite persistence, migrations, repositories |
-| Planning | `internal/planning/` | Master plans, specific plans, implementation docs |
-| Intent V3 | `internal/intentv3/` | Product Intent and deterministic discovery |
-| Discovery V3 | `internal/discoveryv3/` | Progressive discovery questions |
-| Ambiguity V3 | `internal/ambiguityv3/` | Missing information and assumption analysis |
-| Confidence V3 | `internal/confidencev3/` | Intent confidence scoring |
-| Alignment V3 | `internal/alignmentv3/` | Intent-to-implementation alignment reports |
-| OpenCode | `internal/opencode/` | Optional OpenCode integration artifacts |
-| MCP | `internal/mcp/` | Tool definitions and handlers |
+| Category | Status |
+|----------|--------|
+| CRITICAL issues | 0 |
+| OpenCode write paths | 11 auditados, todos con guard |
+| Raw SQL in handlers | 0 |
+| Data races | 0 (sync.Mutex on shared state) |
+| Memory safety (DoS) | Content-Length capped at 10 MB |
+| Error discards | 53 → 10 benign (continuous counters) |
+| Orphan packages | 0 (4 deleted) |
+| Stub packages | 0 (7 documented) |
+
+Full report: [docs/audit/complete-repo-audit.md](docs/audit/complete-repo-audit.md)
 
 ## Documentation
 
 - [Installation](docs/install.md)
 - [Quickstart](docs/quickstart.md)
-- [CLI reference](docs/cli-reference.md)
-- [Manual validation](docs/manual-validation.md)
-- [VPS validation](docs/vps-validation.md)
-- [OpenCode integration](docs/opencode-integration.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [MCP reference](docs/mcp-reference.md)
+- [CLI Reference](docs/cli-reference.md)
+- [OpenCode Integration](docs/opencode-integration.md)
+- [MCP Reference](docs/mcp-reference.md)
 - [Architecture](docs/architecture.md)
-- [Project structure](docs/project-structure.md)
+- [Project Structure](docs/project-structure.md)
+- [Manual Validation](docs/manual-validation.md)
+- [Repository Audit](docs/audit/complete-repo-audit.md)
+- [ADRs](docs/adr/) — 26 architectural decision records
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
+
+The [AGENTS.md](AGENTS.md) file contains the inviolable rule: this VPS is for building only, never for testing Plan-AI. All tests run in sandbox. A separate VPS exists for integration testing.
 
 ## License
 
