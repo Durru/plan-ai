@@ -486,7 +486,7 @@ func newIntentV3CreateCommand() *cobra.Command {
 			defer db.Close()
 			svc := newV3Service(db)
 			input := intentv3.CreateProductIntentInput{
-				ProjectID:         projectRoot,
+				ProjectID:         store.ProjectID(projectRoot),
 				Description:       description,
 				ExpectedOutcome:   expectedOutcome,
 				DesiredExperience: desiredExperience,
@@ -532,7 +532,7 @@ func newIntentV3ListCommand() *cobra.Command {
 			}
 			defer db.Close()
 			svc := newV3Service(db)
-			intents, err := svc.ListProductIntents(projectRoot)
+			intents, err := svc.ListProductIntents(store.ProjectID(projectRoot))
 			if err != nil {
 				return err
 			}
