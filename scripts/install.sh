@@ -189,7 +189,7 @@ print_banner() {
 main() {
     setup_colors
 
-    METHOD="${1:-binary}"
+    METHOD="${1:-go}"
     case "$METHOD" in
         binary|go|git) ;;
         -h|--help)
