@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"time"
 )
 
 // Service is the main agent orchestrator.
@@ -90,7 +91,7 @@ func (s *Service) ProcessMessage(projectID, userInput string) (AgentResponse, er
 
 	// 5. Record the agent run
 	run := AgentRunRecord{
-		ID:        fmt.Sprintf("run_%d", len(ctx.Plans)+len(ctx.Tasks)),
+		ID:        fmt.Sprintf("run_%d", time.Now().UnixNano()),
 		ProjectID: projectID,
 		Intent:    string(intent),
 		Status:    "processed",
